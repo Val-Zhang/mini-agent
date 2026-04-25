@@ -74,3 +74,13 @@ test/
 4. 加入 terminal / filesystem 等可控工具能力。
 5. 加入上下文压缩、任务状态、错误恢复。
 6. 用完整代码过程反推 agent 的设计模型。
+
+## 学习路线
+
+后续实践会参考 `shareAI-lab/learn-claude-code` 和官网 19 章主题推进。我们已经把两周计划、主题索引、差异分析和每日记录模板沉淀在：
+
+- [docs/learning/README.md](./docs/learning/README.md)
+- [docs/learning/source-gap-analysis.md](./docs/learning/source-gap-analysis.md)
+- [docs/learning/topic-index.md](./docs/learning/topic-index.md)
+- [docs/learning/two-week-plan.md](./docs/learning/two-week-plan.md)
+- [docs/learning/session-template.md](./docs/learning/session-template.md)
