@@ -1,4 +1,4 @@
-import type { AgentEvent } from '../../types.js';
+import type { AgentRunEvent } from '../../types.js';
 import type { RendererOutput, TerminalRenderer } from './types.js';
 import { firstMeaningfulLine, formatBlock, MAX_MODEL_SUMMARY_CHARS } from './utils/text.js';
 import { TodoTracker } from './utils/todoTracker.js';
@@ -10,39 +10,38 @@ export class CompactRenderer implements TerminalRenderer {
 
   constructor(private readonly output: RendererOutput) {}
 
-  renderStart(): void {
-    this.output.write('agent> 发送中...\n');
-  }
-
-  renderEvent(event: AgentEvent): void {
+  render(event: AgentRunEvent): void {
     switch (event.type) {
-      case 'model_turn_start':
+      case 'run_started':
+        this.output.write('agent> 发送中...\n');
+        break;
+
+      case 'model_turn_started':
         this.currentTurn = event.turnCount;
         this.output.write(`\n[${event.turnCount}] 模型\n`);
         break;
 
-      case 'model_turn_end':
+      case 'model_turn_completed':
         this.renderModelContent(event.content);
         break;
 
-      case 'tool_call_start':
+      case 'tool_call_started':
         this.output.write(`  · ${formatToolSummary(event.toolCall, this.todoTracker)}\n`);
         break;
 
-      case 'tool_call_end':
+      case 'tool_call_completed':
         this.todoTracker.observeResult(event.toolCall, event.content);
         this.renderToolResult(event);
         break;
+
+      case 'run_completed':
+        this.output.write(`\nagent>\n${event.content}\n\n`);
+        break;
+
+      case 'run_failed':
+        this.output.write(`error> ${event.error}\n\n`);
+        break;
     }
-  }
-
-  renderFinal(reply: string): void {
-    this.output.write(`\nagent>\n${reply}\n\n`);
-  }
-
-  renderError(error: unknown): void {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    this.output.write(`error> ${errorMessage}\n\n`);
   }
 
   private renderModelContent(content: string): void {
@@ -54,7 +53,7 @@ export class CompactRenderer implements TerminalRenderer {
     this.output.write(formatBlock('model', summary, MAX_MODEL_SUMMARY_CHARS));
   }
 
-  private renderToolResult(event: Extract<AgentEvent, { type: 'tool_call_end' }>): void {
+  private renderToolResult(event: Extract<AgentRunEvent, { type: 'tool_call_completed' }>): void {
     const status = event.isError ? '✗' : '✓';
     this.output.write(`    ${status} ${event.toolCall.name} (${event.durationMs}ms)\n`);
 

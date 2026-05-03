@@ -1,8 +1,9 @@
-import type { AgentEvent, AgentSendOptions, ChatMessage, ModelClient, ToolCall } from '../types.js';
+import type { ChatMessage, ModelClient, ToolCall } from '../types.js';
+import type { AgentRunEvent } from './run/events.js';
+import { collectFinalResponse } from './run/collectFinalResponse.js';
 import { ToolRegistry } from '../tools/core/ToolRegistry.js';
 import type { ToolDefinition } from '../tools/core/types.js';
 import { toAssistantMessage, toToolResultMessage } from './utils/messages.js';
-import { snapshotState, type LoopState, type LoopStateSnapshot } from './utils/state.js';
 
 const DEFAULT_MAX_TURNS = 24;
 
@@ -27,11 +28,6 @@ interface AgentRunnerOptions {
   maxTurns?: number;
 }
 
-interface RunLoopResult {
-  finalResponse: string;
-  state: LoopStateSnapshot;
-}
-
 export class AgentRunner {
   private readonly model: ModelClient;
   private readonly tools: ToolRegistry;
@@ -45,84 +41,102 @@ export class AgentRunner {
     this.history = [{ role: 'system', content: systemPrompt }];
   }
 
-  async send(input: string, options: AgentSendOptions = {}): Promise<string> {
+  async *run(input: string): AsyncGenerator<AgentRunEvent> {
+    yield { type: 'run_started', input };
     this.history.push({ role: 'user', content: input });
 
-    const result = await this.runLoop(options);
-    return result.finalResponse;
-  }
+    try {
+      for (let turnCount = 1; turnCount <= this.maxTurns; turnCount += 1) {
+        yield { type: 'model_turn_started', turnCount };
 
-  async runLoop(options: AgentSendOptions = {}): Promise<RunLoopResult> {
-    const state: LoopState = {
-      messages: this.history,
-      turnCount: 0,
-      transitionReason: 'user_message'
-    };
+        const response = await this.model.chat(this.history, {
+          tools: this.tools.list()
+        });
 
-    while (state.turnCount < this.maxTurns) {
-      state.turnCount += 1;
-      emit(options, { type: 'model_turn_start', turnCount: state.turnCount });
-
-      const response = await this.model.chat(state.messages, {
-        tools: this.tools.list()
-      });
-      emit(options, {
-        type: 'model_turn_end',
-        turnCount: state.turnCount,
-        toolCallCount: response.toolCalls.length,
-        content: response.content,
-        stopReason: response.stopReason
-      });
-
-      state.messages.push(toAssistantMessage(response));
-
-      if (response.toolCalls.length === 0) {
-        state.transitionReason = null;
-        return {
-          finalResponse: response.content,
-          state: snapshotState(state)
+        yield {
+          type: 'model_turn_completed',
+          turnCount,
+          content: response.content,
+          stopReason: response.stopReason,
+          toolCalls: response.toolCalls
         };
+
+        this.history.push(toAssistantMessage(response));
+
+        if (response.toolCalls.length === 0) {
+          yield { type: 'run_completed', content: response.content };
+          return;
+        }
+
+        for (const toolCall of response.toolCalls) {
+          yield { type: 'tool_call_started', toolCall };
+          const toolResult = await this.executeToolCall(toolCall);
+          yield toolResult.event;
+          this.history.push(toolResult.message);
+        }
       }
 
-      const toolResults = await Promise.all(
-        response.toolCalls.map((toolCall) => this.executeToolCall(toolCall, options))
-      );
-
-      state.messages.push(...toolResults);
-      state.transitionReason = 'tool_result';
+      throw new Error(`Agent loop exceeded max turns (${this.maxTurns})`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      yield { type: 'run_failed', error: message };
     }
-
-    throw new Error(`Agent loop exceeded max turns (${this.maxTurns})`);
   }
 
-  private async executeToolCall(toolCall: ToolCall, options: AgentSendOptions): Promise<ChatMessage> {
-    emit(options, { type: 'tool_call_start', toolCall });
+  async send(input: string): Promise<string> {
+    return collectFinalResponse(this.run(input));
+  }
+
+  private async executeToolCall(toolCall: ToolCall): Promise<{
+    message: ChatMessage;
+    event: Extract<AgentRunEvent, { type: 'tool_call_completed' }>;
+  }> {
     const startedAt = Date.now();
     const tool = this.tools.get(toolCall.name);
 
     if (!tool) {
       const content = `Unknown tool: ${toolCall.name}`;
-      emit(options, { type: 'tool_call_end', toolCall, isError: true, content, durationMs: Date.now() - startedAt });
-      return toToolResultMessage(toolCall, content, true);
+      return {
+        message: toToolResultMessage(toolCall, content, true),
+        event: {
+          type: 'tool_call_completed',
+          toolCall,
+          isError: true,
+          content,
+          durationMs: Date.now() - startedAt
+        }
+      };
     }
 
     try {
       const result = await tool.execute(toolCall.input ?? {});
       const content = String(result ?? '');
-      emit(options, { type: 'tool_call_end', toolCall, isError: false, content, durationMs: Date.now() - startedAt });
-      return toToolResultMessage(toolCall, content);
+      return {
+        message: toToolResultMessage(toolCall, content),
+        event: {
+          type: 'tool_call_completed',
+          toolCall,
+          isError: false,
+          content,
+          durationMs: Date.now() - startedAt
+        }
+      };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      emit(options, { type: 'tool_call_end', toolCall, isError: true, content: message, durationMs: Date.now() - startedAt });
-      return toToolResultMessage(toolCall, message, true);
+      return {
+        message: toToolResultMessage(toolCall, message, true),
+        event: {
+          type: 'tool_call_completed',
+          toolCall,
+          isError: true,
+          content: message,
+          durationMs: Date.now() - startedAt
+        }
+      };
     }
   }
 
   getHistory(): ChatMessage[] {
     return this.history.map((message) => ({ ...message }));
   }
-}
-
-function emit(options: AgentSendOptions, event: AgentEvent): void {
-  options.onEvent?.(event);
 }

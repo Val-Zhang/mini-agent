@@ -1,33 +1,10 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
 import type { PlanState, TodoItem, TodoStatus } from './types.js';
 
 export class TodoState {
-  private statePath: string;
   private state: PlanState;
 
-  constructor(workspaceRoot: string) {
-    this.statePath = join(workspaceRoot, '.agent', 'todos.json');
+  constructor() {
     this.state = { items: [] };
-  }
-
-  async load(): Promise<void> {
-    try {
-      const content = await readFile(this.statePath, 'utf-8');
-      this.state = JSON.parse(content);
-    } catch (error: unknown) {
-      if (isNodeError(error) && error.code === 'ENOENT') {
-        this.state = { items: [] };
-        return;
-      }
-
-      throw error;
-    }
-  }
-
-  async save(): Promise<void> {
-    await mkdir(dirname(this.statePath), { recursive: true });
-    await writeFile(this.statePath, JSON.stringify(this.state, null, 2), 'utf-8');
   }
 
   add(description: string): TodoItem {
@@ -99,8 +76,4 @@ export class TodoState {
 
     return lines.join('\n');
   }
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error;
 }

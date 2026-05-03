@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createRenderer, loadTraceMode } from '../src/cli/renderers/createRenderer.js';
-import type { AgentEvent } from '../src/types.js';
+import type { AgentRunEvent } from '../src/types.js';
 
 test('loads trace mode with compact fallback', () => {
   assert.equal(loadTraceMode({}), 'compact');
@@ -15,11 +15,9 @@ test('compact renderer summarizes model and todo events', () => {
   const output = new MemoryOutput();
   const renderer = createRenderer({ mode: 'compact', output });
 
-  renderer.renderStart('message');
   for (const event of todoEvents()) {
-    renderer.renderEvent(event);
+    renderer.render(event);
   }
-  renderer.renderFinal('done');
 
   const text = output.toString();
   assert.match(text, /agent> 发送中/);
@@ -36,7 +34,7 @@ test('verbose renderer includes full tool input and output', () => {
   const renderer = createRenderer({ mode: 'verbose', output });
 
   for (const event of todoEvents()) {
-    renderer.renderEvent(event);
+    renderer.render(event);
   }
 
   const text = output.toString();
@@ -50,11 +48,9 @@ test('silent renderer hides events but keeps final answer', () => {
   const output = new MemoryOutput();
   const renderer = createRenderer({ mode: 'off', output });
 
-  renderer.renderStart('message');
   for (const event of todoEvents()) {
-    renderer.renderEvent(event);
+    renderer.render(event);
   }
-  renderer.renderFinal('done');
 
   const text = output.toString();
   assert.match(text, /agent> 发送中/);
@@ -62,18 +58,28 @@ test('silent renderer hides events but keeps final answer', () => {
   assert.match(text, /agent> done/);
 });
 
-function todoEvents(): AgentEvent[] {
+function todoEvents(): AgentRunEvent[] {
   return [
-    { type: 'model_turn_start', turnCount: 1 },
+    { type: 'run_started', input: 'message' },
+    { type: 'model_turn_started', turnCount: 1 },
     {
-      type: 'model_turn_end',
+      type: 'model_turn_completed',
       turnCount: 1,
-      toolCallCount: 1,
       content: '我会先创建任务。\n然后继续。',
-      stopReason: 'tool_calls'
+      stopReason: 'tool_calls',
+      toolCalls: [
+        {
+          id: 'call_1',
+          name: 'todo_write',
+          input: {
+            action: 'add',
+            description: '读取 README 前 5 行'
+          }
+        }
+      ]
     },
     {
-      type: 'tool_call_start',
+      type: 'tool_call_started',
       toolCall: {
         id: 'call_1',
         name: 'todo_write',
@@ -84,7 +90,7 @@ function todoEvents(): AgentEvent[] {
       }
     },
     {
-      type: 'tool_call_end',
+      type: 'tool_call_completed',
       toolCall: {
         id: 'call_1',
         name: 'todo_write',
@@ -98,7 +104,7 @@ function todoEvents(): AgentEvent[] {
       durationMs: 3
     },
     {
-      type: 'tool_call_end',
+      type: 'tool_call_completed',
       toolCall: {
         id: 'call_2',
         name: 'todo_write',
@@ -107,7 +113,8 @@ function todoEvents(): AgentEvent[] {
       isError: false,
       content: 'Current todos:\n  → [todo-1] 读取 README 前 5 行 [FOCUS]\n\nSummary: 0 pending, 1 in progress, 0 completed',
       durationMs: 2
-    }
+    },
+    { type: 'run_completed', content: 'done' }
   ];
 }
 

@@ -1,12 +1,9 @@
-import type { AgentEvent } from '../../types.js';
+import type { AgentRunEvent } from '../../types.js';
 
 export type TraceMode = 'compact' | 'verbose' | 'off';
 
 export interface TerminalRenderer {
-  renderStart(message: string): void;
-  renderEvent(event: AgentEvent): void;
-  renderFinal(reply: string): void;
-  renderError(error: unknown): void;
+  render(event: AgentRunEvent): void;
 }
 
 export interface RendererOutput {

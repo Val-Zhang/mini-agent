@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AgentRunner, loadMaxTurns } from '../src/agent/AgentRunner.js';
-import type { AgentEvent, ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
+import type { AgentRunEvent, ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
 
 test('returns a final response when the model does not request tools', async () => {
   const model = new FakeModel([
@@ -72,7 +72,6 @@ test('executes tool calls, appends tool results, and continues the loop', async 
 });
 
 test('emits observable model and tool events with content', async () => {
-  const events: AgentEvent[] = [];
   const model = new FakeModel([
     {
       content: 'I need to inspect the todo list.',
@@ -105,20 +104,29 @@ test('emits observable model and tool events with content', async () => {
     ]
   });
 
-  await runner.send('show trace', { onEvent: (event) => events.push(event) });
+  const events = await collectEvents(runner.run('show trace'));
 
   assert.deepEqual(
     events.map((event) => event.type),
-    ['model_turn_start', 'model_turn_end', 'tool_call_start', 'tool_call_end', 'model_turn_start', 'model_turn_end']
+    [
+      'run_started',
+      'model_turn_started',
+      'model_turn_completed',
+      'tool_call_started',
+      'tool_call_completed',
+      'model_turn_started',
+      'model_turn_completed',
+      'run_completed'
+    ]
   );
-  assert.equal(events[1].type, 'model_turn_end');
-  if (events[1].type === 'model_turn_end') {
-    assert.equal(events[1].content, 'I need to inspect the todo list.');
-    assert.equal(events[1].stopReason, 'tool_calls');
+  assert.equal(events[2].type, 'model_turn_completed');
+  if (events[2].type === 'model_turn_completed') {
+    assert.equal(events[2].content, 'I need to inspect the todo list.');
+    assert.equal(events[2].stopReason, 'tool_calls');
   }
-  assert.equal(events[3].type, 'tool_call_end');
-  if (events[3].type === 'tool_call_end') {
-    assert.equal(events[3].content, 'todo state');
+  assert.equal(events[4].type, 'tool_call_completed');
+  if (events[4].type === 'tool_call_completed') {
+    assert.equal(events[4].content, 'todo state');
   }
 });
 
@@ -198,6 +206,16 @@ test('loads max turns from environment with safe fallback', () => {
   assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: '0' }), 24);
   assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: 'bad' }), 24);
 });
+
+async function collectEvents(events: AsyncIterable<AgentRunEvent>): Promise<AgentRunEvent[]> {
+  const result: AgentRunEvent[] = [];
+
+  for await (const event of events) {
+    result.push(event);
+  }
+
+  return result;
+}
 
 class FakeModel {
   responses: Array<Partial<ModelResponse>>;

@@ -11,7 +11,9 @@ interface TodoWriteInput extends Record<string, unknown> {
 }
 
 export function createTodoTool({ workspaceRoot }: { workspaceRoot: string }): ToolDefinition<TodoWriteInput> {
-  const state = new TodoState(workspaceRoot);
+  void workspaceRoot;
+
+  const state = new TodoState();
   let queue = Promise.resolve();
 
   return {
@@ -31,15 +33,12 @@ export function createTodoTool({ workspaceRoot }: { workspaceRoot: string }): To
 
 async function executeTodoAction(state: TodoState, input: TodoWriteInput): Promise<string> {
   try {
-    await state.load();
-
     switch (input.action) {
       case 'add': {
         if (!input.description) {
           return 'Error: description is required for add action';
         }
         const item = state.add(input.description);
-        await state.save();
         return `Added todo: [${item.id}] ${item.description}`;
       }
 
@@ -55,7 +54,6 @@ async function executeTodoAction(state: TodoState, input: TodoWriteInput): Promi
           updates.status = input.status;
         }
         const item = state.update(input.id, updates);
-        await state.save();
         return `Updated todo: [${item.id}] ${item.description} (${item.status})`;
       }
 
@@ -64,7 +62,6 @@ async function executeTodoAction(state: TodoState, input: TodoWriteInput): Promi
           return 'Error: id is required for complete action';
         }
         const item = state.complete(input.id);
-        await state.save();
         return `Completed todo: [${item.id}] ${item.description}`;
       }
 

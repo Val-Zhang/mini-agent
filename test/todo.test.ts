@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { readFile, rm, mkdir, writeFile } from 'node:fs/promises';
+import { rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createTodoTool } from '../src/tools/todo/todoTool.js';
 
@@ -88,15 +88,21 @@ describe('TodoWrite Tool', () => {
     assert.match(updateResult, /Updated todo: \[.+\] New description/);
   });
 
-  it('should persist todos across tool instances', async () => {
-    const addResult = await tool.execute({ action: 'add', description: 'Persistent task' });
-    const id = addResult.match(/\[([^\]]+)\]/)![1];
+  it('should keep todos in memory for the current tool instance', async () => {
+    await tool.execute({ action: 'add', description: 'Memory task' });
 
-    // Create new tool instance
+    const listResult = await tool.execute({ action: 'list' });
+
+    assert.match(listResult, /○ \[.+\] Memory task/);
+  });
+
+  it('should start empty for a new tool instance', async () => {
+    await tool.execute({ action: 'add', description: 'Previous instance task' });
+
     const newTool = createTodoTool({ workspaceRoot: testRoot });
     const listResult = await newTool.execute({ action: 'list' });
 
-    assert.match(listResult, /○ \[.+\] Persistent task/);
+    assert.strictEqual(listResult, 'No todos yet.');
   });
 
   it('should preserve all todos when actions run concurrently', async () => {
@@ -112,16 +118,6 @@ describe('TodoWrite Tool', () => {
     assert.match(listResult, /Concurrent task 2/);
     assert.match(listResult, /Concurrent task 3/);
     assert.match(listResult, /Summary: 3 pending, 0 in progress, 0 completed/);
-  });
-
-  it('should return an error for corrupted persisted state', async () => {
-    await mkdir(join(testRoot, '.agent'), { recursive: true });
-    await writeFile(join(testRoot, '.agent', 'todos.json'), '{bad json', 'utf-8');
-
-    const result = await tool.execute({ action: 'list' });
-
-    assert.match(result, /Error:/);
-    assert.match(result, /JSON/);
   });
 
   it('should return error for missing required fields', async () => {
@@ -140,14 +136,4 @@ describe('TodoWrite Tool', () => {
     assert.match(result, /Error: Todo item not found: non-existent/);
   });
 
-  it('should not erase corrupted state after a failed load', async () => {
-    const statePath = join(testRoot, '.agent', 'todos.json');
-    await mkdir(join(testRoot, '.agent'), { recursive: true });
-    await writeFile(statePath, '{bad json', 'utf-8');
-
-    await tool.execute({ action: 'add', description: 'Should not overwrite' });
-
-    const content = await readFile(statePath, 'utf-8');
-    assert.strictEqual(content, '{bad json');
-  });
 });
