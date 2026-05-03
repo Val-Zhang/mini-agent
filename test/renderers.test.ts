@@ -44,6 +44,24 @@ test('verbose renderer includes full tool input and output', () => {
   assert.match(text, /output>\n  Added todo/);
 });
 
+test('renderers show subagent delegation summary for task tool', () => {
+  const compactOutput = new MemoryOutput();
+  const compactRenderer = createRenderer({ mode: 'compact', output: compactOutput });
+  const verboseOutput = new MemoryOutput();
+  const verboseRenderer = createRenderer({ mode: 'verbose', output: verboseOutput });
+
+  for (const event of taskEvents()) {
+    compactRenderer.render(event);
+    verboseRenderer.render(event);
+  }
+
+  assert.match(compactOutput.toString(), /正在使用 researcher subagent，帮你 Inspect README and summarize architecture\./);
+  assert.match(verboseOutput.toString(), /trace> 正在使用 researcher subagent，帮你 Inspect README and summarize architecture\./);
+  assert.match(compactOutput.toString(), /\[researcher\] 模型第 1 轮/);
+  assert.match(verboseOutput.toString(), /subagent> \[researcher\] 模型第 1 轮/);
+  assert.match(verboseOutput.toString(), /subagent> \[researcher\] ✓ read_file \(7ms\)/);
+});
+
 test('silent renderer hides events but keeps final answer', () => {
   const output = new MemoryOutput();
   const renderer = createRenderer({ mode: 'off', output });
@@ -113,6 +131,133 @@ function todoEvents(): AgentRunEvent[] {
       isError: false,
       content: 'Current todos:\n  → [todo-1] 读取 README 前 5 行 [FOCUS]\n\nSummary: 0 pending, 1 in progress, 0 completed',
       durationMs: 2
+    },
+    { type: 'run_completed', content: 'done' }
+  ];
+}
+
+function taskEvents(): AgentRunEvent[] {
+  return [
+    { type: 'run_started', input: 'message' },
+    { type: 'model_turn_started', turnCount: 1 },
+    {
+      type: 'model_turn_completed',
+      turnCount: 1,
+      content: 'I will delegate this.',
+      stopReason: 'tool_calls',
+      toolCalls: [
+        {
+          id: 'call_task_1',
+          name: 'task',
+          input: {
+            subagent: 'researcher',
+            description: 'Inspect README and summarize architecture.'
+          }
+        }
+      ]
+    },
+    {
+      type: 'tool_call_started',
+      toolCall: {
+        id: 'call_task_1',
+        name: 'task',
+        input: {
+          subagent: 'researcher',
+          description: 'Inspect README and summarize architecture.'
+        }
+      }
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: {
+        id: 'call_task_1',
+        name: 'task',
+        input: {
+          subagent: 'researcher',
+          description: 'Inspect README and summarize architecture.'
+        }
+      },
+      subagent: 'researcher',
+      phase: 'started',
+      message: '正在使用 researcher subagent，帮你 Inspect README and summarize architecture.'
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: {
+        id: 'call_task_1',
+        name: 'task',
+        input: {
+          subagent: 'researcher',
+          description: 'Inspect README and summarize architecture.'
+        }
+      },
+      subagent: 'researcher',
+      phase: 'model_turn_started',
+      message: '模型第 1 轮',
+      turnCount: 1
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: {
+        id: 'call_task_1',
+        name: 'task',
+        input: {
+          subagent: 'researcher',
+          description: 'Inspect README and summarize architecture.'
+        }
+      },
+      subagent: 'researcher',
+      phase: 'tool_call_started',
+      message: '调用 read_file',
+      toolName: 'read_file'
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: {
+        id: 'call_task_1',
+        name: 'task',
+        input: {
+          subagent: 'researcher',
+          description: 'Inspect README and summarize architecture.'
+        }
+      },
+      subagent: 'researcher',
+      phase: 'tool_call_completed',
+      message: '完成 read_file',
+      toolName: 'read_file',
+      durationMs: 7,
+      isError: false
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: {
+        id: 'call_task_1',
+        name: 'task',
+        input: {
+          subagent: 'researcher',
+          description: 'Inspect README and summarize architecture.'
+        }
+      },
+      subagent: 'researcher',
+      phase: 'completed',
+      message: '执行完成（1 轮，1 次工具调用）',
+      modelTurns: 1,
+      toolCalls: 1,
+      elapsedMs: 21
+    },
+    {
+      type: 'tool_call_completed',
+      toolCall: {
+        id: 'call_task_1',
+        name: 'task',
+        input: {
+          subagent: 'researcher',
+          description: 'Inspect README and summarize architecture.'
+        }
+      },
+      isError: false,
+      content: 'Subtask result (researcher):\nSummary',
+      durationMs: 12
     },
     { type: 'run_completed', content: 'done' }
   ];

@@ -1,0 +1,131 @@
+import type { ChatMessage, ToolCall } from '../../types.js';
+import type { ToolDefinition, ToolExecutionEvent } from '../../tools/core/types.js';
+import { toToolResultMessage } from '../utils/messages.js';
+import type { AgentRunEvent } from './events.js';
+
+type ToolCallCompletedEvent = Extract<AgentRunEvent, { type: 'tool_call_completed' }>;
+
+export interface ToolCallExecutionResult {
+  message: ChatMessage;
+  event: ToolCallCompletedEvent;
+}
+
+export async function executeToolCallOnce({
+  toolCall,
+  tool,
+  emit
+}: {
+  toolCall: ToolCall;
+  tool: ToolDefinition | undefined;
+  emit: (event: ToolExecutionEvent) => void;
+}): Promise<ToolCallExecutionResult> {
+  const startedAt = Date.now();
+
+  if (!tool) {
+    const content = `Unknown tool: ${toolCall.name}`;
+    return {
+      message: toToolResultMessage(toolCall, content, true),
+      event: {
+        type: 'tool_call_completed',
+        toolCall,
+        isError: true,
+        content,
+        durationMs: Date.now() - startedAt
+      }
+    };
+  }
+
+  try {
+    const result = await tool.execute(toolCall.input ?? {}, { emit });
+    const content = String(result ?? '');
+    return {
+      message: toToolResultMessage(toolCall, content),
+      event: {
+        type: 'tool_call_completed',
+        toolCall,
+        isError: false,
+        content,
+        durationMs: Date.now() - startedAt
+      }
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      message: toToolResultMessage(toolCall, message, true),
+      event: {
+        type: 'tool_call_completed',
+        toolCall,
+        isError: true,
+        content: message,
+        durationMs: Date.now() - startedAt
+      }
+    };
+  }
+}
+
+export async function* streamExecutionProgress<TProgress, TResult>({
+  execute,
+  mapProgress
+}: {
+  execute: (emit: (event: ToolExecutionEvent) => void) => Promise<TResult>;
+  mapProgress: (event: ToolExecutionEvent) => TProgress | null;
+}): AsyncGenerator<TProgress, TResult> {
+  const queue: TProgress[] = [];
+  let settled = false;
+  let wakeUp: (() => void) | null = null;
+  let failure: unknown = null;
+  let finalResult: TResult | undefined;
+
+  const wake = () => {
+    const resume = wakeUp;
+    wakeUp = null;
+    resume?.();
+  };
+
+  const running = execute((event) => {
+    const progress = mapProgress(event);
+    if (progress === null) {
+      return;
+    }
+
+    queue.push(progress);
+    wake();
+  })
+    .then((result) => {
+      finalResult = result;
+    })
+    .catch((error: unknown) => {
+      failure = error;
+    })
+    .finally(() => {
+      settled = true;
+      wake();
+    });
+
+  while (!settled || queue.length > 0) {
+    while (queue.length > 0) {
+      const event = queue.shift();
+      if (event !== undefined) {
+        yield event;
+      }
+    }
+
+    if (!settled) {
+      await new Promise<void>((resolve) => {
+        wakeUp = resolve;
+      });
+    }
+  }
+
+  await running;
+
+  if (failure) {
+    throw failure;
+  }
+
+  if (finalResult === undefined) {
+    throw new Error('Tool execution ended without a final result');
+  }
+
+  return finalResult;
+}

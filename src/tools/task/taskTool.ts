@@ -1,10 +1,12 @@
 import { AgentRunner, loadMaxTurns } from '../../agent/AgentRunner.js';
+import type { SubagentProgressPayload } from '../../agent/run/subagentProgress.js';
 import type { SubagentRegistry } from '../../agent/subagents/SubagentRegistry.js';
 import type { ModelClient } from '../../types.js';
-import type { ToolDefinition } from '../core/types.js';
+import type { ToolDefinition, ToolExecutionContext } from '../core/types.js';
 import { createTaskSchema } from './schema.js';
 
 const DEFAULT_TASK_MAX_TURNS = 8;
+const SUBAGENT_HEARTBEAT_MS = 5000;
 
 interface TaskInput extends Record<string, unknown> {
   subagent?: string;
@@ -39,7 +41,7 @@ export function createTaskTool({
   return {
     name: 'task',
     schema: createTaskSchema(subagents.summaries()),
-    async execute(input: TaskInput): Promise<string> {
+    async execute(input: TaskInput, context?: ToolExecutionContext): Promise<string> {
       if (typeof input.description !== 'string' || input.description.trim() === '') {
         return 'Error: description is required for task action';
       }
@@ -57,8 +59,100 @@ export function createTaskTool({
         maxTurns: Math.min(subagent.maxTurns, maxTurns)
       });
 
-      const result = await childAgent.send(input.description);
-      return `Subtask result (${subagent.name}):\n${result}`;
+      const startedAt = Date.now();
+      let childModelTurns = 0;
+      let childToolCalls = 0;
+
+      emitSubagentProgress(context, {
+        subagent: subagent.name,
+        phase: 'started',
+        message: `正在使用 ${subagent.name} subagent，帮你 ${input.description.trim()}`
+      });
+
+      const heartbeat = setInterval(() => {
+        const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+        emitSubagentProgress(context, {
+          subagent: subagent.name,
+          phase: 'heartbeat',
+          elapsedMs: Date.now() - startedAt,
+          modelTurns: childModelTurns,
+          toolCalls: childToolCalls,
+          message: `仍在执行中（${elapsedSeconds}s，${childModelTurns} 轮，${childToolCalls} 次工具调用）`
+        });
+      }, SUBAGENT_HEARTBEAT_MS);
+
+      try {
+        for await (const event of childAgent.run(input.description)) {
+          switch (event.type) {
+            case 'model_turn_started':
+              childModelTurns = event.turnCount;
+              emitSubagentProgress(context, {
+                subagent: subagent.name,
+                phase: 'model_turn_started',
+                turnCount: event.turnCount,
+                message: `模型第 ${event.turnCount} 轮`
+              });
+              break;
+
+            case 'tool_call_started':
+              childToolCalls += 1;
+              emitSubagentProgress(context, {
+                subagent: subagent.name,
+                phase: 'tool_call_started',
+                toolName: event.toolCall.name,
+                message: `调用 ${event.toolCall.name}`
+              });
+              break;
+
+            case 'tool_call_completed':
+              emitSubagentProgress(context, {
+                subagent: subagent.name,
+                phase: 'tool_call_completed',
+                toolName: event.toolCall.name,
+                durationMs: event.durationMs,
+                isError: event.isError,
+                message: `${event.isError ? '失败' : '完成'} ${event.toolCall.name}`
+              });
+              break;
+
+            case 'run_completed':
+              emitSubagentProgress(context, {
+                subagent: subagent.name,
+                phase: 'completed',
+                elapsedMs: Date.now() - startedAt,
+                modelTurns: childModelTurns,
+                toolCalls: childToolCalls,
+                message: `执行完成（${childModelTurns} 轮，${childToolCalls} 次工具调用）`
+              });
+              return `Subtask result (${subagent.name}):\n${event.content}`;
+
+            case 'run_failed':
+              emitSubagentProgress(context, {
+                subagent: subagent.name,
+                phase: 'failed',
+                elapsedMs: Date.now() - startedAt,
+                modelTurns: childModelTurns,
+                toolCalls: childToolCalls,
+                message: event.error
+              });
+              return `Error: subagent ${subagent.name} failed: ${event.error}`;
+
+            default:
+              break;
+          }
+        }
+
+        return `Error: subagent ${subagent.name} ended without a final result`;
+      } finally {
+        clearInterval(heartbeat);
+      }
     }
   };
+}
+
+function emitSubagentProgress(context: ToolExecutionContext | undefined, payload: SubagentProgressPayload): void {
+  context?.emit({
+    kind: 'subagent_progress',
+    payload
+  });
 }

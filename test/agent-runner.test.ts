@@ -343,6 +343,87 @@ test('task tool returns a clear error for unknown subagents', async () => {
   assert.equal(result, 'Error: unknown subagent missing. Available subagents: general');
 });
 
+test('task tool streams subagent progress events to parent run output', async () => {
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_task',
+          name: 'task',
+          input: { subagent: 'researcher', description: 'Inspect README.' }
+        }
+      ]
+    },
+    {
+      content: 'Child summary',
+      toolCalls: []
+    },
+    {
+      content: 'Parent done',
+      toolCalls: []
+    }
+  ]);
+
+  const taskTool = createTaskTool({
+    model,
+    createTools: () => [],
+    subagents: new SubagentRegistry([
+      {
+        name: 'general',
+        description: 'General child agent',
+        tools: [],
+        maxTurns: 8,
+        prompt: 'general prompt'
+      },
+      {
+        name: 'researcher',
+        description: 'Read-only child agent',
+        tools: [],
+        maxTurns: 8,
+        prompt: 'research prompt'
+      }
+    ]),
+    maxTurns: 8
+  });
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'parent system',
+    tools: [taskTool]
+  });
+
+  const events = await collectEvents(runner.run('Delegate this.'));
+  const started = events.find((event) => event.type === 'subagent_progress' && event.phase === 'started');
+  const completed = events.find((event) => event.type === 'subagent_progress' && event.phase === 'completed');
+
+  assert.ok(started);
+  if (started?.type === 'subagent_progress') {
+    assert.equal(started.subagent, 'researcher');
+    assert.match(started.message, /正在使用 researcher subagent/);
+  }
+
+  assert.ok(completed);
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === 'subagent_progress' &&
+        event.phase === 'started' &&
+        event.toolCall.id === 'call_task'
+    ),
+    true
+  );
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === 'tool_call_completed' &&
+        event.toolCall.id === 'call_task' &&
+        /Subtask result \(researcher\):/.test(event.content)
+    ),
+    true
+  );
+});
+
 test('loads max turns from environment with safe fallback', () => {
   assert.equal(loadMaxTurns({}), 24);
   assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: '32' }), 32);

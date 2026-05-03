@@ -1,8 +1,12 @@
 import type { AgentRunEvent } from '../../types.js';
 import type { RendererOutput, TerminalRenderer } from './types.js';
 import { formatBlock } from './utils/text.js';
+import { formatToolSummary } from './utils/toolSummary.js';
+import { TodoTracker } from './utils/todoTracker.js';
 
 export class VerboseRenderer implements TerminalRenderer {
+  private readonly todoTracker = new TodoTracker();
+
   constructor(private readonly output: RendererOutput) {}
 
   render(event: AgentRunEvent): void {
@@ -31,12 +35,20 @@ export class VerboseRenderer implements TerminalRenderer {
 
       case 'tool_call_started':
         this.output.write(`tool> 调用 ${event.toolCall.name}\n`);
+        if (event.toolCall.name === 'task') {
+          this.output.write(`trace> ${formatToolSummary(event.toolCall, this.todoTracker)}\n`);
+        }
         this.output.write(formatBlock('input', JSON.stringify(event.toolCall.input, null, 2)));
         break;
 
       case 'tool_call_completed':
+        this.todoTracker.observeResult(event.toolCall, event.content);
         this.output.write(`tool> ${event.toolCall.name} ${event.isError ? '失败' : '完成'} (${event.durationMs}ms)\n`);
         this.output.write(formatBlock('output', event.content));
+        break;
+
+      case 'subagent_progress':
+        this.renderSubagentProgress(event);
         break;
 
       case 'run_completed':
@@ -45,6 +57,20 @@ export class VerboseRenderer implements TerminalRenderer {
 
       case 'run_failed':
         this.output.write(`error> ${event.error}\n\n`);
+        break;
+    }
+  }
+
+  private renderSubagentProgress(event: Extract<AgentRunEvent, { type: 'subagent_progress' }>): void {
+    switch (event.phase) {
+      case 'tool_call_completed': {
+        const status = event.isError ? '✗' : '✓';
+        const duration = typeof event.durationMs === 'number' ? ` (${event.durationMs}ms)` : '';
+        this.output.write(`subagent> [${event.subagent}] ${status} ${event.toolName ?? 'tool'}${duration}\n`);
+        break;
+      }
+      default:
+        this.output.write(`subagent> [${event.subagent}] ${event.message}\n`);
         break;
     }
   }

@@ -34,6 +34,10 @@ export class CompactRenderer implements TerminalRenderer {
         this.renderToolResult(event);
         break;
 
+      case 'subagent_progress':
+        this.renderSubagentProgress(event);
+        break;
+
       case 'run_completed':
         this.output.write(`\nagent>\n${event.content}\n\n`);
         break;
@@ -65,6 +69,35 @@ export class CompactRenderer implements TerminalRenderer {
 
     if (event.isError || event.toolCall.name === 'todo_write') {
       this.output.write(formatBlock('output', event.content));
+    }
+  }
+
+  private renderSubagentProgress(event: Extract<AgentRunEvent, { type: 'subagent_progress' }>): void {
+    switch (event.phase) {
+      case 'started':
+        this.output.write(`    ↳ ${event.message}\n`);
+        break;
+      case 'heartbeat':
+        this.output.write(`    … [${event.subagent}] ${event.message}\n`);
+        break;
+      case 'model_turn_started':
+        this.output.write(`    … [${event.subagent}] ${event.message}\n`);
+        break;
+      case 'tool_call_started':
+        this.output.write(`    · [${event.subagent}] ${event.message}\n`);
+        break;
+      case 'tool_call_completed': {
+        const status = event.isError ? '✗' : '✓';
+        const duration = typeof event.durationMs === 'number' ? ` (${event.durationMs}ms)` : '';
+        this.output.write(`      ${status} [${event.subagent}] ${event.toolName ?? 'tool'}${duration}\n`);
+        break;
+      }
+      case 'completed':
+        this.output.write(`    ✓ [${event.subagent}] ${event.message}\n`);
+        break;
+      case 'failed':
+        this.output.write(`    ✗ [${event.subagent}] ${event.message}\n`);
+        break;
     }
   }
 }

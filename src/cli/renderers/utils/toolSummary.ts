@@ -21,7 +21,7 @@ export function formatToolSummary(toolCall: ToolCall, todoTracker: TodoTracker):
       return `bash           ${stringValue(toolCall.input.command)}`;
 
     case 'task':
-      return `task ${formatSubagent(toolCall.input.subagent)} ${stringValue(toolCall.input.description)}`;
+      return formatTaskDelegationSummary(toolCall.input);
 
     default:
       return `${toolCall.name} ${JSON.stringify(toolCall.input)}`;
@@ -29,7 +29,13 @@ export function formatToolSummary(toolCall: ToolCall, todoTracker: TodoTracker):
 }
 
 function formatSubagent(value: unknown): string {
-  return typeof value === 'string' && value ? `[${value}]` : '[general]';
+  return typeof value === 'string' && value ? value : 'general';
+}
+
+function formatTaskDelegationSummary(input: Record<string, unknown>): string {
+  const subagent = formatSubagent(input.subagent);
+  const description = stringValue(input.description) || '处理这个子任务';
+  return `正在使用 ${subagent} subagent，帮你 ${description}`;
 }
 
 function formatLimit(value: unknown): string {

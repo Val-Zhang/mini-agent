@@ -9,8 +9,17 @@ export interface ToolSchema {
   };
 }
 
+export interface ToolExecutionEvent {
+  kind: string;
+  payload: unknown;
+}
+
+export interface ToolExecutionContext {
+  emit(event: ToolExecutionEvent): void;
+}
+
 export interface ToolDefinition<TInput extends Record<string, unknown> = Record<string, unknown>> {
   name: string;
   schema?: ToolSchema;
-  execute(input: TInput): Promise<string> | string;
+  execute(input: TInput, context?: ToolExecutionContext): Promise<string> | string;
 }

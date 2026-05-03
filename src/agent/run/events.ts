@@ -1,4 +1,5 @@
 import type { ToolCall } from '../../types.js';
+import type { SubagentProgressPhase } from './subagentProgress.js';
 
 export type AgentRunEvent =
   | {
@@ -26,6 +27,20 @@ export type AgentRunEvent =
       isError: boolean;
       content: string;
       durationMs: number;
+    }
+  | {
+      type: 'subagent_progress';
+      toolCall: ToolCall;
+      subagent: string;
+      phase: SubagentProgressPhase;
+      message: string;
+      turnCount?: number;
+      toolName?: string;
+      durationMs?: number;
+      isError?: boolean;
+      elapsedMs?: number;
+      modelTurns?: number;
+      toolCalls?: number;
     }
   | {
       type: 'run_completed';
