@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AgentRunner, loadMaxTurns } from '../src/agent/AgentRunner.js';
+import { createTaskTool, loadTaskMaxTurns } from '../src/tools/task/taskTool.js';
 import type { AgentRunEvent, ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
 
 test('returns a final response when the model does not request tools', async () => {
@@ -200,11 +201,71 @@ test('returns unknown tool errors as tool results', async () => {
   assert.match(toolResult.content, /Unknown tool/);
 });
 
+test('task tool runs a child agent without merging child history into the parent', async () => {
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_task',
+          name: 'task',
+          input: { description: 'Read README and summarize the project goal.' }
+        }
+      ]
+    },
+    {
+      content: 'Child summary: this is a small terminal agent project.',
+      toolCalls: []
+    },
+    {
+      content: 'Parent received the child summary.',
+      toolCalls: []
+    }
+  ]);
+
+  const taskTool = createTaskTool({
+    model,
+    createTools: () => [],
+    systemPrompt: 'child system',
+    maxTurns: 3
+  });
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'parent system',
+    tools: [taskTool]
+  });
+
+  const response = await runner.send('Delegate this investigation.');
+  const history = runner.getHistory();
+
+  assert.equal(response, 'Parent received the child summary.');
+  assert.deepEqual(
+    history.map((message) => message.role),
+    ['system', 'user', 'assistant', 'tool', 'assistant']
+  );
+  assert.equal(history[0].content, 'parent system');
+  assert.equal(history[3].name, 'task');
+  assert.match(history[3].content, /Subtask result:/);
+  assert.match(history[3].content, /Child summary/);
+  assert.equal(history.some((message) => message.content === 'child system'), false);
+
+  assert.equal(model.calls.length, 3);
+  assert.equal(model.calls[1][0].content, 'child system');
+  assert.equal(model.calls[1][1].content, 'Read README and summarize the project goal.');
+});
+
 test('loads max turns from environment with safe fallback', () => {
   assert.equal(loadMaxTurns({}), 24);
   assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: '32' }), 32);
   assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: '0' }), 24);
   assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: 'bad' }), 24);
+});
+
+test('loads task max turns with safe fallback', () => {
+  assert.equal(loadTaskMaxTurns({}), 8);
+  assert.equal(loadTaskMaxTurns({ AGENT_MAX_TURNS: '4' }), 4);
+  assert.equal(loadTaskMaxTurns({ AGENT_TASK_MAX_TURNS: '12' }), 12);
+  assert.equal(loadTaskMaxTurns({ AGENT_TASK_MAX_TURNS: 'bad' }), 8);
 });
 
 async function collectEvents(events: AsyncIterable<AgentRunEvent>): Promise<AgentRunEvent[]> {

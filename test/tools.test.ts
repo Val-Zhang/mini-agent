@@ -9,6 +9,7 @@ import { createDefaultTools } from '../src/tools/defaultTools.js';
 import { createFilesystemTools } from '../src/tools/filesystem/filesystemTools.js';
 import { createPathSandbox } from '../src/tools/core/pathSandbox.js';
 import { ToolRegistry } from '../src/tools/core/ToolRegistry.js';
+import type { ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
 
 test('path sandbox rejects paths outside the workspace', async () => {
   const workspace = await createTempWorkspace();
@@ -105,10 +106,40 @@ test('default tools expose schemas for model tool calling', async () => {
   }
 });
 
+test('default tools include task when subagents are enabled', async () => {
+  const workspace = await createTempWorkspace();
+  try {
+    const tools = createDefaultTools({
+      workspaceRoot: workspace,
+      subagents: {
+        enabled: true,
+        model: new FakeModel()
+      }
+    });
+    const names = tools.map((tool) => tool.name).sort();
+
+    assert.deepEqual(names, ['bash', 'edit_file', 'read_file', 'task', 'todo_write', 'write_file']);
+    assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 async function createTempWorkspace(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), 'mini-agent-tools-'));
 }
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+class FakeModel {
+  async chat(_messages: ChatMessage[], _options?: ModelChatOptions): Promise<ModelResponse> {
+    return {
+      content: 'ok',
+      toolCalls: [],
+      stopReason: 'stop',
+      raw: {}
+    };
+  }
 }

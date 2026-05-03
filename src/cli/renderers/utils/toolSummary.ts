@@ -20,6 +20,9 @@ export function formatToolSummary(toolCall: ToolCall, todoTracker: TodoTracker):
     case 'bash':
       return `bash           ${stringValue(toolCall.input.command)}`;
 
+    case 'task':
+      return `task           ${stringValue(toolCall.input.description)}`;
+
     default:
       return `${toolCall.name} ${JSON.stringify(toolCall.input)}`;
   }
