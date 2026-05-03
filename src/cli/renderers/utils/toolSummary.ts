@@ -21,11 +21,15 @@ export function formatToolSummary(toolCall: ToolCall, todoTracker: TodoTracker):
       return `bash           ${stringValue(toolCall.input.command)}`;
 
     case 'task':
-      return `task           ${stringValue(toolCall.input.description)}`;
+      return `task ${formatSubagent(toolCall.input.subagent)} ${stringValue(toolCall.input.description)}`;
 
     default:
       return `${toolCall.name} ${JSON.stringify(toolCall.input)}`;
   }
+}
+
+function formatSubagent(value: unknown): string {
+  return typeof value === 'string' && value ? `[${value}]` : '[general]';
 }
 
 function formatLimit(value: unknown): string {

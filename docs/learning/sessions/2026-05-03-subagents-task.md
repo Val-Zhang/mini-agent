@@ -38,13 +38,27 @@ src/tools/task/
 src/tools/defaultTools.ts
 src/agent/createAgent.ts
 src/agent/prompts/main.ts
-src/agent/prompts/task.ts
+src/agent/subagents/
+subagents/general.md
+subagents/researcher.md
 ```
 
-`createDefaultTools({ workspaceRoot, subagents: { enabled: true, model } })` 在显式开启 subagent 能力时注册 `task`。子 agent 使用 `createBaseTools()` 创建新的基础工具实例，因此：
+`createAgent()` 启动时会读取 `subagents/*.md`，把多个 Markdown subagent 配置加载成 `SubagentRegistry`。`createDefaultTools({ workspaceRoot, subagents: { enabled: true, model, registry } })` 在显式开启 subagent 能力时注册 `task`。
+
+`task` 工具会根据输入里的 `subagent` 名称选择配置：
+
+```json
+{
+  "subagent": "researcher",
+  "description": "阅读 README.md 并总结项目目标"
+}
+```
+
+如果不传 `subagent`，默认使用 `general`。子 agent 使用 `createBaseTools({ allowlist })` 创建新的基础工具实例，因此：
 
 - 子 agent 有独立 message history。
 - 子 agent 的 todo 状态不会污染主 agent 的 todo。
+- 子 agent 只能看到自身配置里允许的工具。
 - 子 agent 默认不再注册 `task`，先避免递归委托带来的复杂度。
 
 ## 为什么要隔离上下文
@@ -61,7 +75,7 @@ src/agent/prompts/task.ts
 `task` 的价值是让主会话只看到压缩后的结果：
 
 ```text
-Subtask result:
+Subtask result (researcher):
 ...
 ```
 
@@ -83,8 +97,11 @@ AGENT_TASK_MAX_TURNS
 
 1. `task` 工具会创建 child agent 并返回结果。
 2. child agent 的 system/user messages 不会合并进 parent history。
-3. 完整 agent 在有 model 时会暴露 `task` 工具。
-4. `AGENT_TASK_MAX_TURNS` 可以配置并有安全 fallback。
+3. `task` 能按 subagent 名称选择 child agent。
+4. 未知 subagent 会返回可用列表。
+5. subagent tools allowlist 会真正限制 child agent 工具。
+6. `subagents/*.md` 可以加载多个配置。
+7. `AGENT_TASK_MAX_TURNS` 可以配置并有安全 fallback。
 
 ## 本地验证提示词
 
@@ -97,14 +114,15 @@ npm start
 输入：
 
 ```text
-请使用 task 工具委托一个子任务：读取 README.md 前 5 行并总结这个项目的目标。主任务只需要基于子任务结果，用一句话说明这个项目在练习什么。
+请使用 researcher 子代理委托一个子任务：读取 README.md 前 5 行并总结这个项目的目标。主任务只需要基于子任务结果，用一句话说明这个项目在练习什么。
 ```
 
 你应该观察到：
 
-1. 主 agent 调用 `task`。
-2. `task` 内部的 child agent 读取 README。
-3. 主 agent 收到 `Subtask result` 后再组织最终回答。
+1. 主 agent 调用 `task`，并传入 `subagent: "researcher"`。
+2. `task` 内部读取 registry 中的 researcher 配置。
+3. child agent 只能使用 researcher 允许的工具。
+4. 主 agent 收到 `Subtask result (researcher)` 后再组织最终回答。
 
 ## 下一步
 
@@ -113,4 +131,5 @@ npm start
 - 展示 child agent 的压缩 trace，而不是只展示 `task` 工具结果。
 - 支持 task 并发。
 - 给 task 增加权限边界。
+- 支持 subagent model override。
 - 在 context compact 章节里比较 subagent isolation 和 summary compact 的差异。

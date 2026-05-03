@@ -23,10 +23,12 @@ src/
   agent/
     AgentRunner.ts
     createAgent.ts
-    systemPrompt.ts
+    prompts/
+      main.ts
+    run/
+    subagents/
     utils/
       messages.ts
-      state.ts
   model/
     localModelClient.ts
     utils/
@@ -65,7 +67,8 @@ src/
 如果想理解某个细节，再进入对应 `utils/`：
 
 - assistant/tool message 格式：`src/agent/utils/messages.ts`
-- LoopState 快照：`src/agent/utils/state.ts`
+- agent 事件流：`src/agent/run/events.ts`
+- subagent 配置加载：`src/agent/subagents/loadSubagents.ts`
 - OpenAI-compatible 工具格式：`src/model/utils/openAICompatible.ts`
 - provider 响应归一化：`src/model/utils/response.ts`
 - bash 子进程执行：`src/tools/bash/utils/command.ts`

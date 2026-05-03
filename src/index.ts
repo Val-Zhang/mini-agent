@@ -10,6 +10,6 @@ await loadEnvFile();
 
 const config = loadLocalModelConfig(process.env);
 const model = new LocalModelClient(config);
-const agent = createAgent({ model, workspaceRoot: process.cwd() });
+const agent = await createAgent({ model, workspaceRoot: process.cwd() });
 
 await startTerminal({ agent, config });

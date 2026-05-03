@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AgentRunner, loadMaxTurns } from '../src/agent/AgentRunner.js';
+import { SubagentRegistry } from '../src/agent/subagents/SubagentRegistry.js';
 import { createTaskTool, loadTaskMaxTurns } from '../src/tools/task/taskTool.js';
+import type { ToolDefinition } from '../src/tools/core/types.js';
 import type { AgentRunEvent, ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
 
 test('returns a final response when the model does not request tools', async () => {
@@ -226,7 +228,15 @@ test('task tool runs a child agent without merging child history into the parent
   const taskTool = createTaskTool({
     model,
     createTools: () => [],
-    systemPrompt: 'child system',
+    subagents: new SubagentRegistry([
+      {
+        name: 'general',
+        description: 'General child agent',
+        tools: [],
+        maxTurns: 3,
+        prompt: 'child system'
+      }
+    ]),
     maxTurns: 3
   });
   const runner = new AgentRunner({
@@ -245,13 +255,92 @@ test('task tool runs a child agent without merging child history into the parent
   );
   assert.equal(history[0].content, 'parent system');
   assert.equal(history[3].name, 'task');
-  assert.match(history[3].content, /Subtask result:/);
+  assert.match(history[3].content, /Subtask result \(general\):/);
   assert.match(history[3].content, /Child summary/);
   assert.equal(history.some((message) => message.content === 'child system'), false);
 
   assert.equal(model.calls.length, 3);
   assert.equal(model.calls[1][0].content, 'child system');
   assert.equal(model.calls[1][1].content, 'Read README and summarize the project goal.');
+});
+
+test('task tool selects configured subagents and applies tool allowlists', async () => {
+  const model = new FakeModel([
+    {
+      content: 'Research summary.',
+      toolCalls: []
+    }
+  ]);
+  const createToolsCalls: Array<{ allowlist?: string[] }> = [];
+  const taskTool = createTaskTool({
+    model,
+    createTools(options = {}) {
+      createToolsCalls.push(options);
+      return [
+        {
+          name: 'read_file',
+          async execute() {
+            return 'file';
+          }
+        },
+        {
+          name: 'write_file',
+          async execute() {
+            return 'written';
+          }
+        }
+      ] satisfies ToolDefinition[];
+    },
+    subagents: new SubagentRegistry([
+      {
+        name: 'general',
+        description: 'General child agent',
+        tools: ['read_file', 'write_file'],
+        maxTurns: 8,
+        prompt: 'general prompt'
+      },
+      {
+        name: 'researcher',
+        description: 'Read-only child agent',
+        tools: ['read_file'],
+        maxTurns: 4,
+        prompt: 'research prompt'
+      }
+    ]),
+    maxTurns: 8
+  });
+
+  const result = await taskTool.execute({
+    subagent: 'researcher',
+    description: 'Inspect the README.'
+  });
+
+  assert.match(result, /Subtask result \(researcher\):/);
+  assert.equal(model.calls[0][0].content, 'research prompt');
+  assert.deepEqual(createToolsCalls, [{ allowlist: ['read_file'] }]);
+});
+
+test('task tool returns a clear error for unknown subagents', async () => {
+  const taskTool = createTaskTool({
+    model: new FakeModel([]),
+    createTools: () => [],
+    subagents: new SubagentRegistry([
+      {
+        name: 'general',
+        description: 'General child agent',
+        tools: [],
+        maxTurns: 8,
+        prompt: 'general prompt'
+      }
+    ])
+  });
+
+  const result = await taskTool.execute({
+    subagent: 'missing',
+    description: 'Do something.'
+  });
+
+  assert.equal(result, 'Error: unknown subagent missing. Available subagents: general');
 });
 
 test('loads max turns from environment with safe fallback', () => {

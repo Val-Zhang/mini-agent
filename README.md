@@ -60,10 +60,12 @@ src/
   agent/
     AgentRunner.ts       # 最小 agent loop runner
     createAgent.ts       # agent facade
-    systemPrompt.ts      # 初始系统提示词
+    prompts/
+      main.ts            # 主 agent 系统提示词
+    run/                 # agent event stream 类型和结果收集
+    subagents/           # subagent markdown 配置加载和 registry
     utils/
       messages.ts        # assistant/tool message 转换
-      state.ts           # loop state 快照
   cli/
     inputEditor.ts       # TTY raw-mode 输入编辑器
     terminal.ts          # 终端输入输出循环
@@ -99,9 +101,13 @@ src/
     todo/
       todoTool.ts        # todo 工具核心逻辑
       schema.ts          # todo schema
-      state.ts           # 任务状态管理和持久化
+      state.ts           # 任务状态内存管理
       types.ts           # TodoItem / PlanState
+    task/
+      taskTool.ts        # task / subagent 委托工具
+      schema.ts          # task schema
   index.ts               # CLI 入口
+subagents/               # Markdown subagent 配置
 docs/
   learning/
     sessions/            # 每日实践记录

@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { SubagentRegistry } from '../src/agent/subagents/SubagentRegistry.js';
 import { createBashTool } from '../src/tools/bash/bashTool.js';
 import { createDefaultTools } from '../src/tools/defaultTools.js';
 import { createFilesystemTools } from '../src/tools/filesystem/filesystemTools.js';
@@ -113,13 +114,50 @@ test('default tools include task when subagents are enabled', async () => {
       workspaceRoot: workspace,
       subagents: {
         enabled: true,
-        model: new FakeModel()
+        model: new FakeModel(),
+        registry: new SubagentRegistry([
+          {
+            name: 'general',
+            description: 'General child agent',
+            tools: ['read_file'],
+            maxTurns: 8,
+            prompt: 'general prompt'
+          }
+        ])
       }
     });
     const names = tools.map((tool) => tool.name).sort();
 
     assert.deepEqual(names, ['bash', 'edit_file', 'read_file', 'task', 'todo_write', 'write_file']);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('default tools fail fast when subagent tool allowlist references unknown tools', async () => {
+  const workspace = await createTempWorkspace();
+  try {
+    assert.throws(
+      () =>
+        createDefaultTools({
+          workspaceRoot: workspace,
+          subagents: {
+            enabled: true,
+            model: new FakeModel(),
+            registry: new SubagentRegistry([
+              {
+                name: 'general',
+                description: 'General child agent',
+                tools: ['read_file', 'nonexistent_tool'],
+                maxTurns: 8,
+                prompt: 'general prompt'
+              }
+            ])
+          }
+        }),
+      /Unknown subagent tools: nonexistent_tool/
+    );
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

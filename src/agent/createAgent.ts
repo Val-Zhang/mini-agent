@@ -1,15 +1,18 @@
 import { AgentRunner } from './AgentRunner.js';
 import { SYSTEM_PROMPT } from './prompts/main.js';
+import { loadSubagentRegistry } from './subagents/loadSubagents.js';
 import { createDefaultTools } from '../tools/defaultTools.js';
 import type { ModelClient } from '../types.js';
 
-export function createAgent({
+export async function createAgent({
   model,
   workspaceRoot = process.cwd()
 }: {
   model: ModelClient;
   workspaceRoot?: string;
-}): AgentRunner {
+}): Promise<AgentRunner> {
+  const subagentRegistry = await loadSubagentRegistry({ workspaceRoot });
+
   return new AgentRunner({
     model,
     systemPrompt: SYSTEM_PROMPT,
@@ -17,7 +20,8 @@ export function createAgent({
       workspaceRoot,
       subagents: {
         enabled: true,
-        model
+        model,
+        registry: subagentRegistry
       }
     })
   });
