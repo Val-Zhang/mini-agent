@@ -70,6 +70,45 @@ test('executes tool calls, appends tool results, and continues the loop', async 
   assert.equal(history[3].content, 'observed value');
 });
 
+test('preserves provider metadata that must be replayed in assistant messages', async () => {
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_1',
+          name: 'echo',
+          input: { text: 'observed value' }
+        }
+      ],
+      providerMetadata: {
+        reasoningContent: 'private chain state'
+      }
+    },
+    {
+      content: 'Done.',
+      toolCalls: []
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    tools: [
+      {
+        name: 'echo',
+        async execute(input) {
+          return input.text;
+        }
+      }
+    ]
+  });
+
+  await runner.send('use a tool');
+
+  assert.equal(runner.getHistory()[2].reasoning_content, 'private chain state');
+});
+
 test('returns unknown tool errors as tool results', async () => {
   const model = new FakeModel([
     {

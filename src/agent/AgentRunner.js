@@ -1,9 +1,11 @@
+import { ToolRegistry } from '../tools/ToolRegistry.js';
+
 const DEFAULT_MAX_TURNS = 8;
 
 export class AgentRunner {
   constructor({ model, tools = [], systemPrompt, maxTurns = DEFAULT_MAX_TURNS }) {
     this.model = model;
-    this.tools = new Map(tools.map((tool) => [tool.name, tool]));
+    this.tools = new ToolRegistry(tools);
     this.maxTurns = maxTurns;
     this.history = [{ role: 'system', content: systemPrompt }];
   }
@@ -26,7 +28,7 @@ export class AgentRunner {
       state.turnCount += 1;
 
       const response = await this.model.chat(state.messages, {
-        tools: [...this.tools.values()]
+        tools: this.tools.list()
       });
 
       state.messages.push(toAssistantMessage(response));
@@ -85,6 +87,10 @@ function toAssistantMessage(response) {
         arguments: JSON.stringify(toolCall.input ?? {})
       }
     }));
+  }
+
+  if (typeof response.providerMetadata?.reasoningContent === 'string') {
+    message.reasoning_content = response.providerMetadata.reasoningContent;
   }
 
   return message;

@@ -45,6 +45,9 @@ export class LocalModelClient {
       content,
       toolCalls: normalizeToolCalls(message?.tool_calls ?? []),
       stopReason: choice?.finish_reason ?? null,
+      providerMetadata: {
+        reasoningContent: message?.reasoning_content
+      },
       raw: data
     };
   }

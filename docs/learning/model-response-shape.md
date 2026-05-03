@@ -9,6 +9,7 @@
   content: string,
   toolCalls: array,
   stopReason: string | null,
+  providerMetadata?: object,
   raw: object
 }
 ```
@@ -55,6 +56,7 @@ OpenAI-compatible 原始响应大致是：
 | `content` | `choices[0].message.content` |
 | `toolCalls` | `choices[0].message.tool_calls` |
 | `stopReason` | `choices[0].finish_reason` |
+| `providerMetadata` | 需要参与后续协议回放的供应商特定字段 |
 | `raw` | 原始完整响应 |
 
 ## 为什么需要内部结构
@@ -83,6 +85,12 @@ Provider adapter 的职责是把这些原始结构转成同一个 `ModelResponse
 ### 3. 保留 raw 方便调试
 
 内部逻辑使用统一字段，但 `raw` 保留完整原始响应。这样排查模型兼容性、token usage、finish reason 或供应商特殊字段时，不会丢信息。
+
+### 4. providerMetadata 保存协议回放字段
+
+有些 provider 的字段不属于 agent runner 的通用语义，但在多轮调用时必须原样带回。DeepSeek 的 `reasoning_content` 就是一个例子：thinking/tool 场景下，如果 assistant message 包含该字段，下一轮请求需要把它带回给 API。
+
+这类字段不应该污染通用 `ModelResponse` 顶层语义，但也不能丢。当前做法是放入 `providerMetadata`，由消息转换层按需写回 provider-compatible message。
 
 ## Tool Call 子结构
 
@@ -117,5 +125,5 @@ OpenAI-compatible 映射：
 
 - 把 `ModelResponse` 和 `ToolCall` 写成明确类型或 JSDoc typedef。
 - 增加 `usage` 字段用于 token 统计。
-- 增加 `providerMetadata` 或继续依赖 `raw`。
+- 继续细化 `providerMetadata`，区分“仅调试字段”和“必须回放字段”。
 - 为 streaming 增加增量事件结构，但最终 turn 仍归并成 `ModelResponse`。

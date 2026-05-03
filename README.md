@@ -65,6 +65,11 @@ src/
     envFile.js           # 本地 .env 加载
   model/
     localModelClient.js  # OpenAI-compatible 模型客户端
+  tools/
+    ToolRegistry.js      # 工具注册和分发
+    bashTool.js          # bash 工具
+    filesystemTools.js   # read/write/edit 文件工具
+    pathSandbox.js       # 工作区路径沙箱
   index.js               # CLI 入口
 docs/
   learning/
@@ -73,6 +78,7 @@ test/
   agent-runner.test.js
   config.test.js
   env-file.test.js
+  tools.test.js
 ```
 
 ## 后续重写路线
