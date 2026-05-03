@@ -10,7 +10,7 @@ GitHub 仓库： https://github.com/shareAI-lab/learn-claude-code
 
 - 核心问题：模型本身不能访问文件、执行命令或读取结果，需要 harness 把真实结果回填给模型。
 - 机制重点：`messages`、`tool_use`、`tool_result`、turn、LoopState、退出条件。
-- Node 实践重点：异步 agent runner、模型客户端、终端输入输出、工具结果回写。
+- Node 实践重点：异步 agent runner、统一 ModelClient、provider registry、终端输入输出、工具结果回写。
 
 ### s02: 工具使用
 
@@ -65,14 +65,14 @@ GitHub 仓库： https://github.com/shareAI-lab/learn-claude-code
 ### s10: 系统提示词
 
 - 核心问题：system prompt 是动态组装的控制面，不是一段固定文本。
-- 机制重点：身份、规则、工具说明、权限模式、项目上下文、记忆、技能摘要。
+- 机制重点：身份、规则、工具说明、模型能力、权限模式、项目上下文、记忆、技能摘要。
 - Node 实践重点：prompt builder、section ordering、配置化开关、快照测试。
 
 ### s11: 错误恢复
 
 - 核心问题：模型调用、工具执行、权限拒绝、上下文超限都会失败。
 - 机制重点：错误分类、重试、降级、恢复提示、用户澄清。
-- Node 实践重点：typed errors、retry policy、recoverable result、失败注入测试。
+- Node 实践重点：provider 错误归一化、typed errors、retry policy、recoverable result、失败注入测试。
 
 ## 任务运行时
 

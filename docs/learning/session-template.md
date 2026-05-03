@@ -19,6 +19,7 @@
 ## Node Mapping
 
 - 模块边界：
+- 模型 provider / capability 考虑：
 - 核心数据结构：
 - 异步/进程/文件系统考虑：
 - 错误处理策略：

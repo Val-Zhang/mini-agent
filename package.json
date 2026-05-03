@@ -1,7 +1,7 @@
 {
   "name": "mini-agent",
   "version": "0.1.0",
-  "description": "A small terminal agent built with Node.js and a local model.",
+  "description": "A small terminal agent built with Node.js and provider-based model clients.",
   "type": "module",
   "private": true,
   "bin": {
@@ -19,6 +19,7 @@
     "agent",
     "terminal",
     "local-model",
+    "model-provider",
     "node"
   ],
   "license": "MIT"

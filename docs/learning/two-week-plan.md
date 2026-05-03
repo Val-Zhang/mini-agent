@@ -6,8 +6,8 @@
 
 - 官网主题：s01 Agent 循环
 - 理解目标：agent 和 chat completion 的差异在于 harness loop 会把真实工具结果回填给模型。
-- Node 目标：把当前 `createAgent` 设计成 runner + LoopState。
-- 产物：agent loop 流程图、runner 接口草案、最小交互记录。
+- Node 目标：把当前 `createAgent` 设计成 runner + LoopState，并让 runner 只依赖统一 `ModelClient`。
+- 产物：agent loop 流程图、runner 接口草案、模型 provider 边界草案、最小交互记录。
 
 ## Day 2: Tool Use
 
@@ -54,16 +54,16 @@
 ## Day 8: Memory + System Prompt
 
 - 官网主题：s09 记忆系统、s10 系统提示词
-- 理解目标：system prompt 是动态组装的控制面，memory 是可选择注入的长期状态。
-- Node 目标：实现 prompt builder 和本地 memory store。
+- 理解目标：system prompt 是动态组装的控制面，memory 是可选择注入的长期状态，模型能力也应参与 prompt 组装。
+- Node 目标：实现 prompt builder、本地 memory store 和 provider capabilities 注入。
 - 产物：prompt 快照测试、memory read/write 工具。
 
 ## Day 9: Error Recovery
 
 - 官网主题：s11 错误恢复
 - 理解目标：失败需要分类、回流和恢复策略，而不是简单 throw。
-- Node 目标：设计 typed errors、retry policy 和 recoverable tool result。
-- 产物：模型失败、工具失败、权限拒绝的恢复演示。
+- Node 目标：设计 provider 错误归一化、typed errors、retry policy 和 recoverable tool result。
+- 产物：模型失败、provider 失败、工具失败、权限拒绝的恢复演示。
 
 ## Day 10: Task System
 
@@ -97,8 +97,8 @@
 
 - 官网主题：s19 MCP 与插件，以及整体复盘
 - 理解目标：MCP 把工具来源从本地硬编码扩展为外部可插拔能力。
-- Node 目标：设计 MCP/plugin 接入边界，并整理整体架构。
-- 产物：MCP 工具命名规则、plugin manifest 草案、Node terminal agent best practices 文档。
+- Node 目标：设计 MCP/plugin 接入边界，复盘 model provider 边界，并整理整体架构。
+- 产物：MCP 工具命名规则、plugin manifest 草案、model provider 复盘、Node terminal agent best practices 文档。
 
 ## 每日交付标准
 
