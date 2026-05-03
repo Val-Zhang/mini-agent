@@ -58,12 +58,13 @@
 
 ## 对我们计划的影响
 
-原来的 14 天计划需要调整：
+原来的 14 天压缩计划已经调整为逐主题路线：
 
-- 前 6 天保持不变，先打牢核心闭环。
-- 第 7-9 天集中补系统加固：权限、hooks、memory、system prompt、recovery。
-- 第 10-11 天进入任务运行时：任务系统、后台任务、定时调度。
-- 第 12-13 天进入多 agent 平台：团队、协议、自主、worktree。
-- 第 14 天做 MCP/plugins 和整体复盘。
+- 前 4 天打牢核心闭环：loop、tools、todo、一次性 subagent。
+- 第 5-6 天补两个产品化前置能力：配置化 subagent、plan mode。
+- 第 7-13 天进入系统加固：skills、compact、permission、hooks、memory、system prompt、error recovery。
+- 第 14-16 天进入任务运行时：任务系统、后台任务、定时调度。
+- 第 17-20 天进入多 agent 平台：团队、协议、自主、worktree。
+- 第 21-22 天做 MCP/plugins 和整体复盘。
 
-这样仍然能保持“两周左右”，但每天不一定只对应一个官网章节；越靠后越偏机制整合。
+这样节奏更长，但每天只聚焦一个主题，更适合通过完整实现过程理解机制。

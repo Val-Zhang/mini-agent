@@ -18,6 +18,12 @@ GitHub 仓库： https://github.com/shareAI-lab/learn-claude-code
 - 机制重点：tool schema、dispatch map、handler、路径沙箱、错误返回。
 - Node 实践重点：tool registry、`fs/promises`、`child_process`、工作区约束。
 
+### s02.1: Discovery + Web Tools
+
+- 核心问题：可用 agent 需要高效发现信息，而不是只靠模型猜路径或用 bash 拼命令。
+- 机制重点：代码搜索、文件发现、目录枚举、网页读取、结果截断、来源标注。
+- Node 实践重点：`grep` / `glob` / `list_dir` / `web_fetch` 工具，workspace sandbox，网络访问开关，统一检索输出格式。
+
 ### s03: 待办写入
 
 - 核心问题：复杂任务中模型容易跳步、重复或忘记目标。
@@ -29,6 +35,18 @@ GitHub 仓库： https://github.com/shareAI-lab/learn-claude-code
 - 核心问题：探索性上下文会污染主会话。
 - 机制重点：独立 `messages`、一次性子任务、总结回传。
 - Node 实践重点：可复用 runner、最大轮次保护、子任务上下文隔离。
+
+### s04.1: 配置化子代理
+
+- 核心问题：一次性 `task` 工具只能表达“委托”，不能表达“委托给谁、允许做什么、最多跑多久”。
+- 机制重点：subagent manifest、身份 prompt、工具 allowlist、maxTurns、model override。
+- Node 实践重点：`subagents/*` 配置加载、schema 校验、`task` 支持 subagent name、默认 `general` 子 agent。
+
+### s04.2: Plan Mode
+
+- 核心问题：用户有时需要 agent 先拆解计划，而不是立刻执行文件、命令或外部工具。
+- 机制重点：plan/execute 模式切换、计划草案、用户确认、工具调用冻结、确认后的执行恢复。
+- Node 实践重点：terminal 模式状态、runner mode 参数、plan approval event、renderer 展示、permission pipeline 集成。
 
 ### s05: 技能系统
 
@@ -47,8 +65,8 @@ GitHub 仓库： https://github.com/shareAI-lab/learn-claude-code
 ### s07: 权限系统
 
 - 核心问题：模型提出的工具调用不能直接变成真实动作。
-- 机制重点：permission mode、deny/allow/ask、规则匹配、用户确认。
-- Node 实践重点：permission pipeline、bash 安全检查、交互式确认。
+- 机制重点：permission mode、deny/allow/ask、规则匹配、用户确认、plan approval。
+- Node 实践重点：permission pipeline、bash 安全检查、交互式确认、plan mode 与 execute mode 的权限差异。
 
 ### s08: Hook 系统
 
@@ -65,7 +83,7 @@ GitHub 仓库： https://github.com/shareAI-lab/learn-claude-code
 ### s10: 系统提示词
 
 - 核心问题：system prompt 是动态组装的控制面，不是一段固定文本。
-- 机制重点：身份、规则、工具说明、模型能力、权限模式、项目上下文、记忆、技能摘要。
+- 机制重点：身份、规则、工具说明、模型能力、权限模式、plan/execute 模式、项目上下文、记忆、技能摘要、subagent manifest 摘要。
 - Node 实践重点：prompt builder、section ordering、配置化开关、快照测试。
 
 ### s11: 错误恢复
@@ -123,5 +141,5 @@ GitHub 仓库： https://github.com/shareAI-lab/learn-claude-code
 ### s19: MCP 与插件
 
 - 核心问题：工具不应该全部写死在主程序里，外部程序也应能接入同一工具控制面。
-- 机制重点：MCP client、list tools、call tool、工具名前缀、plugin manifest。
-- Node 实践重点：外部进程通信、MCP SDK/JSON-RPC、插件发现、统一 tool router。
+- 机制重点：MCP client、list tools、call tool、工具名前缀、plugin manifest、permission/hook 复用。
+- Node 实践重点：外部进程通信、MCP SDK/JSON-RPC、插件发现、统一 tool router、MCP tool adapter 到 `ToolDefinition`。
