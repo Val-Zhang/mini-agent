@@ -98,7 +98,7 @@ test('default tools expose schemas for model tool calling', async () => {
     const tools = createDefaultTools({ workspaceRoot: workspace });
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['bash', 'edit_file', 'read_file', 'write_file']);
+    assert.deepEqual(names, ['bash', 'edit_file', 'read_file', 'todo_write', 'write_file']);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
   } finally {
     await rm(workspace, { recursive: true, force: true });

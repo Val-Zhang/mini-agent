@@ -92,6 +92,11 @@ src/
       utils/
         input.ts         # 文件工具输入校验
         text.ts          # 文本截断和行数限制
+    todo/
+      todoTool.ts        # todo 工具核心逻辑
+      schema.ts          # todo schema
+      state.ts           # 任务状态管理和持久化
+      types.ts           # TodoItem / PlanState
   index.ts               # CLI 入口
 docs/
   learning/
@@ -101,6 +106,7 @@ test/
   cli-keys.test.ts
   config.test.ts
   env-file.test.ts
+  todo.test.ts
   tools.test.ts
 ```
 
