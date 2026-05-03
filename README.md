@@ -6,7 +6,7 @@
 
 ## 当前初始化内容
 
-- 纯 Node.js ESM 项目，无外部依赖
+- TypeScript + Node.js ESM 项目
 - `mini-agent` CLI 入口
 - OpenAI-compatible 模型客户端骨架，本地模型优先，也预留商业 API 接入
 - 简单的终端对话循环
@@ -54,31 +54,54 @@ POST /chat/completions
 
 ```text
 src/
+  types.ts               # 内部 ModelResponse / ToolCall / message 协议
   agent/
-    AgentRunner.js       # 最小 agent loop runner
-    createAgent.js       # agent facade
-    systemPrompt.js      # 初始系统提示词
+    AgentRunner.ts       # 最小 agent loop runner
+    createAgent.ts       # agent facade
+    systemPrompt.ts      # 初始系统提示词
+    utils/
+      messages.ts        # assistant/tool message 转换
+      state.ts           # loop state 快照
   cli/
-    terminal.js          # 终端输入输出循环
+    inputEditor.ts       # TTY raw-mode 输入编辑器
+    terminal.ts          # 终端输入输出循环
+    utils/
+      keys.ts            # Enter / modified Enter 键位识别
   config/
-    localModelConfig.js  # 模型 provider 配置读取
-    envFile.js           # 本地 .env 加载
+    localModelConfig.ts  # 模型 provider 配置读取
+    envFile.ts           # 本地 .env 加载
   model/
-    localModelClient.js  # OpenAI-compatible 模型客户端
+    localModelClient.ts  # OpenAI-compatible 模型客户端
+    utils/
+      openAICompatible.ts # OpenAI-compatible 工具格式转换
+      response.ts        # provider 响应归一化
   tools/
-    ToolRegistry.js      # 工具注册和分发
-    bashTool.js          # bash 工具
-    filesystemTools.js   # read/write/edit 文件工具
-    pathSandbox.js       # 工作区路径沙箱
-  index.js               # CLI 入口
+    defaultTools.ts      # 默认工具集合
+    core/
+      ToolRegistry.ts    # 工具注册和分发
+      pathSandbox.ts     # 工作区路径沙箱
+      types.ts           # ToolDefinition / ToolSchema
+    bash/
+      bashTool.ts        # bash 工具核心逻辑
+      schema.ts          # bash schema
+      utils/
+        command.ts       # 子进程执行和结果格式化
+    filesystem/
+      filesystemTools.ts # read/write/edit 文件工具核心逻辑
+      schemas.ts         # 文件工具 schema
+      utils/
+        input.ts         # 文件工具输入校验
+        text.ts          # 文本截断和行数限制
+  index.ts               # CLI 入口
 docs/
   learning/
     sessions/            # 每日实践记录
 test/
-  agent-runner.test.js
-  config.test.js
-  env-file.test.js
-  tools.test.js
+  agent-runner.test.ts
+  cli-keys.test.ts
+  config.test.ts
+  env-file.test.ts
+  tools.test.ts
 ```
 
 ## 后续重写路线

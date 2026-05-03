@@ -3,7 +3,14 @@ const DEFAULT_MODEL = 'qwen2.5-coder:7b';
 const DEFAULT_API_KEY = 'local';
 const DEFAULT_PROVIDER = 'local-openai-compatible';
 
-export function loadLocalModelConfig(env = process.env) {
+export interface ModelConfig {
+  provider: string;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
+export function loadLocalModelConfig(env: NodeJS.ProcessEnv = process.env): ModelConfig {
   return {
     provider: env.MODEL_PROVIDER || DEFAULT_PROVIDER,
     baseUrl: trimTrailingSlash(env.MODEL_BASE_URL || env.LOCAL_MODEL_BASE_URL || DEFAULT_BASE_URL),
@@ -12,6 +19,6 @@ export function loadLocalModelConfig(env = process.env) {
   };
 }
 
-function trimTrailingSlash(value) {
+function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }

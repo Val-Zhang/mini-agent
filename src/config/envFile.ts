@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
-export async function loadEnvFile(path = '.env', target = process.env) {
-  let content;
+export async function loadEnvFile(path = '.env', target: NodeJS.ProcessEnv = process.env): Promise<void> {
+  let content: string;
 
   try {
     content = await readFile(path, 'utf8');
-  } catch (error) {
-    if (error.code === 'ENOENT') {
+  } catch (error: unknown) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
       return;
     }
 
@@ -20,8 +20,8 @@ export async function loadEnvFile(path = '.env', target = process.env) {
   }
 }
 
-export function parseEnvFile(content) {
-  const entries = [];
+export function parseEnvFile(content: string): Array<[string, string]> {
+  const entries: Array<[string, string]> = [];
 
   for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -48,7 +48,7 @@ export function parseEnvFile(content) {
   return entries;
 }
 
-function unquote(value) {
+function unquote(value: string): string {
   if (
     (value.startsWith('"') && value.endsWith('"')) ||
     (value.startsWith("'") && value.endsWith("'"))
@@ -57,4 +57,8 @@ function unquote(value) {
   }
 
   return value;
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error;
 }

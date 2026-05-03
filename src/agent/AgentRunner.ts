@@ -1,24 +1,45 @@
-import { ToolRegistry } from '../tools/ToolRegistry.js';
+import type { ChatMessage, ModelClient, ToolCall } from '../types.js';
+import { ToolRegistry } from '../tools/core/ToolRegistry.js';
+import type { ToolDefinition } from '../tools/core/types.js';
+import { toAssistantMessage, toToolResultMessage } from './utils/messages.js';
+import { snapshotState, type LoopState, type LoopStateSnapshot } from './utils/state.js';
 
 const DEFAULT_MAX_TURNS = 8;
 
+interface AgentRunnerOptions {
+  model: ModelClient;
+  tools?: ToolDefinition[];
+  systemPrompt: string;
+  maxTurns?: number;
+}
+
+interface RunLoopResult {
+  finalResponse: string;
+  state: LoopStateSnapshot;
+}
+
 export class AgentRunner {
-  constructor({ model, tools = [], systemPrompt, maxTurns = DEFAULT_MAX_TURNS }) {
+  private readonly model: ModelClient;
+  private readonly tools: ToolRegistry;
+  private readonly maxTurns: number;
+  private readonly history: ChatMessage[];
+
+  constructor({ model, tools = [], systemPrompt, maxTurns = DEFAULT_MAX_TURNS }: AgentRunnerOptions) {
     this.model = model;
     this.tools = new ToolRegistry(tools);
     this.maxTurns = maxTurns;
     this.history = [{ role: 'system', content: systemPrompt }];
   }
 
-  async send(input) {
+  async send(input: string): Promise<string> {
     this.history.push({ role: 'user', content: input });
 
     const result = await this.runLoop();
     return result.finalResponse;
   }
 
-  async runLoop() {
-    const state = {
+  async runLoop(): Promise<RunLoopResult> {
+    const state: LoopState = {
       messages: this.history,
       turnCount: 0,
       transitionReason: 'user_message'
@@ -52,7 +73,7 @@ export class AgentRunner {
     throw new Error(`Agent loop exceeded max turns (${this.maxTurns})`);
   }
 
-  async executeToolCall(toolCall) {
+  private async executeToolCall(toolCall: ToolCall): Promise<ChatMessage> {
     const tool = this.tools.get(toolCall.name);
 
     if (!tool) {
@@ -62,53 +83,13 @@ export class AgentRunner {
     try {
       const result = await tool.execute(toolCall.input ?? {});
       return toToolResultMessage(toolCall, String(result ?? ''));
-    } catch (error) {
-      return toToolResultMessage(toolCall, error.message, true);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return toToolResultMessage(toolCall, message, true);
     }
   }
 
-  getHistory() {
+  getHistory(): ChatMessage[] {
     return this.history.map((message) => ({ ...message }));
   }
-}
-
-function toAssistantMessage(response) {
-  const message = {
-    role: 'assistant',
-    content: response.content
-  };
-
-  if (response.toolCalls.length > 0) {
-    message.tool_calls = response.toolCalls.map((toolCall) => ({
-      id: toolCall.id,
-      type: 'function',
-      function: {
-        name: toolCall.name,
-        arguments: JSON.stringify(toolCall.input ?? {})
-      }
-    }));
-  }
-
-  if (typeof response.providerMetadata?.reasoningContent === 'string') {
-    message.reasoning_content = response.providerMetadata.reasoningContent;
-  }
-
-  return message;
-}
-
-function toToolResultMessage(toolCall, content, isError = false) {
-  return {
-    role: 'tool',
-    tool_call_id: toolCall.id,
-    name: toolCall.name,
-    content: isError ? `Error: ${content}` : content
-  };
-}
-
-function snapshotState(state) {
-  return {
-    turnCount: state.turnCount,
-    transitionReason: state.transitionReason,
-    messageCount: state.messages.length
-  };
 }

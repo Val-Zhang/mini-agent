@@ -4,11 +4,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createBashTool } from '../src/tools/bashTool.js';
+import { createBashTool } from '../src/tools/bash/bashTool.js';
 import { createDefaultTools } from '../src/tools/defaultTools.js';
-import { createFilesystemTools } from '../src/tools/filesystemTools.js';
-import { createPathSandbox } from '../src/tools/pathSandbox.js';
-import { ToolRegistry } from '../src/tools/ToolRegistry.js';
+import { createFilesystemTools } from '../src/tools/filesystem/filesystemTools.js';
+import { createPathSandbox } from '../src/tools/core/pathSandbox.js';
+import { ToolRegistry } from '../src/tools/core/ToolRegistry.js';
 
 test('path sandbox rejects paths outside the workspace', async () => {
   const workspace = await createTempWorkspace();
@@ -28,18 +28,24 @@ test('filesystem tools read, write, and edit files inside the workspace', async 
     const sandbox = createPathSandbox(workspace);
     const tools = new ToolRegistry(createFilesystemTools({ sandbox }));
 
-    const writeResult = await tools.get('write_file').execute({
+    const writeFileTool = tools.get('write_file');
+    assert.ok(writeFileTool);
+    const writeResult = await writeFileTool.execute({
       path: 'notes/greet.txt',
       content: 'hello world'
     });
     assert.match(writeResult, /Wrote 11 characters/);
 
-    const readResult = await tools.get('read_file').execute({
+    const readFileTool = tools.get('read_file');
+    assert.ok(readFileTool);
+    const readResult = await readFileTool.execute({
       path: 'notes/greet.txt'
     });
     assert.equal(readResult, 'hello world');
 
-    const editResult = await tools.get('edit_file').execute({
+    const editFileTool = tools.get('edit_file');
+    assert.ok(editFileTool);
+    const editResult = await editFileTool.execute({
       path: 'notes/greet.txt',
       old_text: 'world',
       new_text: 'agent'
@@ -58,9 +64,11 @@ test('filesystem tools reject workspace escapes', async () => {
   try {
     const sandbox = createPathSandbox(workspace);
     const tools = new ToolRegistry(createFilesystemTools({ sandbox }));
+    const readFileTool = tools.get('read_file');
+    assert.ok(readFileTool);
 
     await assert.rejects(
-      tools.get('read_file').execute({ path: '../secret.txt' }),
+      Promise.resolve(readFileTool.execute({ path: '../secret.txt' })),
       /Path escapes workspace/
     );
   } finally {
@@ -97,10 +105,10 @@ test('default tools expose schemas for model tool calling', async () => {
   }
 });
 
-async function createTempWorkspace() {
+async function createTempWorkspace(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), 'mini-agent-tools-'));
 }
 
-function escapeRegExp(value) {
+function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

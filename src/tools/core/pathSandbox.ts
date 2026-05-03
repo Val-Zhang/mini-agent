@@ -1,6 +1,11 @@
 import path from 'node:path';
 
-export function createPathSandbox(workspaceRoot) {
+export interface PathSandbox {
+  root: string;
+  resolvePath(requestedPath: string): string;
+}
+
+export function createPathSandbox(workspaceRoot: string): PathSandbox {
   const root = path.resolve(workspaceRoot);
 
   return {
@@ -22,6 +27,6 @@ export function createPathSandbox(workspaceRoot) {
   };
 }
 
-function isInsideRoot(root, candidate) {
+function isInsideRoot(root: string, candidate: string): boolean {
   return candidate === root || candidate.startsWith(`${root}${path.sep}`);
 }

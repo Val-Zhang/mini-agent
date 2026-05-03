@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AgentRunner } from '../src/agent/AgentRunner.js';
+import type { ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
 
 test('returns a final response when the model does not request tools', async () => {
   const model = new FakeModel([
@@ -51,7 +52,7 @@ test('executes tool calls, appends tool results, and continues the loop', async 
       {
         name: 'echo',
         async execute(input) {
-          return input.text;
+          return String(input.text);
         }
       }
     ]
@@ -98,7 +99,7 @@ test('preserves provider metadata that must be replayed in assistant messages', 
       {
         name: 'echo',
         async execute(input) {
-          return input.text;
+          return String(input.text);
         }
       }
     ]
@@ -141,12 +142,15 @@ test('returns unknown tool errors as tool results', async () => {
 });
 
 class FakeModel {
-  constructor(responses) {
+  responses: Array<Partial<ModelResponse>>;
+  calls: ChatMessage[][];
+
+  constructor(responses: Array<Partial<ModelResponse>>) {
     this.responses = responses;
     this.calls = [];
   }
 
-  async chat(messages) {
+  async chat(messages: ChatMessage[], _options?: ModelChatOptions): Promise<ModelResponse> {
     this.calls.push(messages.map((message) => ({ ...message })));
     const response = this.responses.shift();
 
@@ -156,6 +160,8 @@ class FakeModel {
 
     return {
       stopReason: null,
+      toolCalls: [],
+      content: '',
       raw: {},
       ...response
     };
