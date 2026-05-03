@@ -22,6 +22,7 @@ export interface SubagentProgressPayload {
   elapsedMs?: number;
   modelTurns?: number;
   toolCalls?: number;
+  failedToolCalls?: number;
 }
 
 export function mapSubagentProgressEvent(
@@ -66,7 +67,8 @@ export function parseSubagentProgressPayload(value: unknown): SubagentProgressPa
     isError: asBoolean(value.isError),
     elapsedMs: asNumber(value.elapsedMs),
     modelTurns: asNumber(value.modelTurns),
-    toolCalls: asNumber(value.toolCalls)
+    toolCalls: asNumber(value.toolCalls),
+    failedToolCalls: asNumber(value.failedToolCalls)
   };
 }
 

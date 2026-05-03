@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createRenderer, loadTraceMode } from '../src/cli/renderers/createRenderer.js';
+import { createRenderer, loadSubagentTraceMode, loadTraceMode } from '../src/cli/renderers/createRenderer.js';
 import type { AgentRunEvent } from '../src/types.js';
 
 test('loads trace mode with compact fallback', () => {
@@ -9,6 +9,13 @@ test('loads trace mode with compact fallback', () => {
   assert.equal(loadTraceMode({ AGENT_TRACE: 'verbose' }), 'verbose');
   assert.equal(loadTraceMode({ AGENT_TRACE: 'off' }), 'off');
   assert.equal(loadTraceMode({ AGENT_TRACE: 'unknown' }), 'compact');
+});
+
+test('loads subagent trace mode with compact fallback', () => {
+  assert.equal(loadSubagentTraceMode({}), 'compact');
+  assert.equal(loadSubagentTraceMode({ AGENT_SUBAGENT_TRACE: 'verbose' }), 'verbose');
+  assert.equal(loadSubagentTraceMode({ AGENT_SUBAGENT_TRACE: 'off' }), 'off');
+  assert.equal(loadSubagentTraceMode({ AGENT_SUBAGENT_TRACE: 'unknown' }), 'compact');
 });
 
 test('compact renderer summarizes model and todo events', () => {
@@ -60,6 +67,37 @@ test('renderers show subagent delegation summary for task tool', () => {
   assert.match(compactOutput.toString(), /\[researcher\] 模型第 1 轮/);
   assert.match(verboseOutput.toString(), /subagent> \[researcher\] 模型第 1 轮/);
   assert.match(verboseOutput.toString(), /subagent> \[researcher\] ✓ read_file \(7ms\)/);
+  assert.match(compactOutput.toString(), /完成（0s，1 轮，1 次工具调用，0 次失败）/);
+  assert.match(verboseOutput.toString(), /完成（0s，1 轮，1 次工具调用，0 次失败）/);
+});
+
+test('subagent trace mode off hides subagent progress', () => {
+  const output = new MemoryOutput();
+  const renderer = createRenderer({ mode: 'compact', subagentTraceMode: 'off', output });
+
+  for (const event of taskEvents()) {
+    renderer.render(event);
+  }
+
+  const text = output.toString();
+  assert.match(text, /正在使用 researcher subagent/);
+  assert.doesNotMatch(text, /\[researcher\] 模型第/);
+  assert.doesNotMatch(text, /✓ \[researcher\]/);
+  assert.doesNotMatch(text, /完成（/);
+});
+
+test('compact subagent trace throttles model turn chatter', () => {
+  const output = new MemoryOutput();
+  const renderer = createRenderer({ mode: 'compact', subagentTraceMode: 'compact', output });
+
+  for (const event of taskEventsWithManyTurns()) {
+    renderer.render(event);
+  }
+
+  const text = output.toString();
+  assert.match(text, /\[researcher\] 模型第 1 轮/);
+  assert.doesNotMatch(text, /\[researcher\] 模型第 2 轮/);
+  assert.match(text, /\[researcher\] 模型第 3 轮/);
 });
 
 test('silent renderer hides events but keeps final answer', () => {
@@ -258,6 +296,45 @@ function taskEvents(): AgentRunEvent[] {
       isError: false,
       content: 'Subtask result (researcher):\nSummary',
       durationMs: 12
+    },
+    { type: 'run_completed', content: 'done' }
+  ];
+}
+
+function taskEventsWithManyTurns(): AgentRunEvent[] {
+  return [
+    { type: 'run_started', input: 'message' },
+    { type: 'model_turn_started', turnCount: 1 },
+    {
+      type: 'model_turn_completed',
+      turnCount: 1,
+      content: 'I will delegate this.',
+      stopReason: 'tool_calls',
+      toolCalls: []
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: { id: 'call_task_1', name: 'task', input: {} },
+      subagent: 'researcher',
+      phase: 'model_turn_started',
+      message: '模型第 1 轮',
+      turnCount: 1
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: { id: 'call_task_1', name: 'task', input: {} },
+      subagent: 'researcher',
+      phase: 'model_turn_started',
+      message: '模型第 2 轮',
+      turnCount: 2
+    },
+    {
+      type: 'subagent_progress',
+      toolCall: { id: 'call_task_1', name: 'task', input: {} },
+      subagent: 'researcher',
+      phase: 'model_turn_started',
+      message: '模型第 3 轮',
+      turnCount: 3
     },
     { type: 'run_completed', content: 'done' }
   ];

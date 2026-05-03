@@ -41,6 +41,7 @@ export type AgentRunEvent =
       elapsedMs?: number;
       modelTurns?: number;
       toolCalls?: number;
+      failedToolCalls?: number;
     }
   | {
       type: 'run_completed';

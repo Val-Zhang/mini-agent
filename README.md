@@ -44,6 +44,7 @@ MODEL_NAME=qwen2.5-coder:7b
 MODEL_API_KEY=local
 AGENT_MAX_TURNS=24
 AGENT_TRACE=compact
+AGENT_SUBAGENT_TRACE=compact
 ```
 
 `MODEL_BASE_URL` 应指向 OpenAI-compatible API 的根路径，当前客户端会请求：

@@ -1,13 +1,17 @@
 import type { AgentRunEvent } from '../../types.js';
-import type { RendererOutput, TerminalRenderer } from './types.js';
+import type { RendererOutput, SubagentTraceMode, TerminalRenderer } from './types.js';
 import { formatBlock } from './utils/text.js';
+import { formatSubagentProgressSummary, formatSubagentToolCompletion } from './utils/subagentProgressFormatter.js';
 import { formatToolSummary } from './utils/toolSummary.js';
 import { TodoTracker } from './utils/todoTracker.js';
 
 export class VerboseRenderer implements TerminalRenderer {
   private readonly todoTracker = new TodoTracker();
 
-  constructor(private readonly output: RendererOutput) {}
+  constructor(
+    private readonly output: RendererOutput,
+    private readonly options: { subagentTraceMode?: SubagentTraceMode } = {}
+  ) {}
 
   render(event: AgentRunEvent): void {
     switch (event.type) {
@@ -62,13 +66,24 @@ export class VerboseRenderer implements TerminalRenderer {
   }
 
   private renderSubagentProgress(event: Extract<AgentRunEvent, { type: 'subagent_progress' }>): void {
+    const subagentTraceMode = this.options.subagentTraceMode ?? 'compact';
+    if (subagentTraceMode === 'off') {
+      return;
+    }
+
+    if (subagentTraceMode === 'compact' && event.phase === 'heartbeat') {
+      return;
+    }
+
     switch (event.phase) {
       case 'tool_call_completed': {
-        const status = event.isError ? '✗' : '✓';
-        const duration = typeof event.durationMs === 'number' ? ` (${event.durationMs}ms)` : '';
-        this.output.write(`subagent> [${event.subagent}] ${status} ${event.toolName ?? 'tool'}${duration}\n`);
+        this.output.write(`subagent> [${event.subagent}] ${formatSubagentToolCompletion(event)}\n`);
         break;
       }
+      case 'completed':
+      case 'failed':
+        this.output.write(`subagent> [${event.subagent}] ${formatSubagentProgressSummary(event)}\n`);
+        break;
       default:
         this.output.write(`subagent> [${event.subagent}] ${event.message}\n`);
         break;

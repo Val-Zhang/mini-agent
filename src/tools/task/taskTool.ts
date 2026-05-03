@@ -62,6 +62,7 @@ export function createTaskTool({
       const startedAt = Date.now();
       let childModelTurns = 0;
       let childToolCalls = 0;
+      let childFailedToolCalls = 0;
 
       emitSubagentProgress(context, {
         subagent: subagent.name,
@@ -77,7 +78,8 @@ export function createTaskTool({
           elapsedMs: Date.now() - startedAt,
           modelTurns: childModelTurns,
           toolCalls: childToolCalls,
-          message: `仍在执行中（${elapsedSeconds}s，${childModelTurns} 轮，${childToolCalls} 次工具调用）`
+          failedToolCalls: childFailedToolCalls,
+          message: `仍在执行中（${elapsedSeconds}s，${childModelTurns} 轮，${childToolCalls} 次工具调用，${childFailedToolCalls} 次失败）`
         });
       }, SUBAGENT_HEARTBEAT_MS);
 
@@ -105,6 +107,9 @@ export function createTaskTool({
               break;
 
             case 'tool_call_completed':
+              if (event.isError) {
+                childFailedToolCalls += 1;
+              }
               emitSubagentProgress(context, {
                 subagent: subagent.name,
                 phase: 'tool_call_completed',
@@ -122,7 +127,8 @@ export function createTaskTool({
                 elapsedMs: Date.now() - startedAt,
                 modelTurns: childModelTurns,
                 toolCalls: childToolCalls,
-                message: `执行完成（${childModelTurns} 轮，${childToolCalls} 次工具调用）`
+                failedToolCalls: childFailedToolCalls,
+                message: `执行完成（${childModelTurns} 轮，${childToolCalls} 次工具调用，${childFailedToolCalls} 次失败）`
               });
               return `Subtask result (${subagent.name}):\n${event.content}`;
 
@@ -133,6 +139,7 @@ export function createTaskTool({
                 elapsedMs: Date.now() - startedAt,
                 modelTurns: childModelTurns,
                 toolCalls: childToolCalls,
+                failedToolCalls: childFailedToolCalls,
                 message: event.error
               });
               return `Error: subagent ${subagent.name} failed: ${event.error}`;

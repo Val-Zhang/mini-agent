@@ -1,13 +1,16 @@
 import { CompactRenderer } from './compactRenderer.js';
+import { loadSubagentTraceMode, loadTraceMode } from './rendererConfig.js';
 import { SilentRenderer } from './silentRenderer.js';
-import type { RendererOutput, TerminalRenderer, TraceMode } from './types.js';
+import type { RendererOutput, SubagentTraceMode, TerminalRenderer, TraceMode } from './types.js';
 import { VerboseRenderer } from './verboseRenderer.js';
 
 export function createRenderer({
   mode = loadTraceMode(),
+  subagentTraceMode = loadSubagentTraceMode(),
   output
 }: {
   mode?: TraceMode;
+  subagentTraceMode?: SubagentTraceMode;
   output: RendererOutput;
 }): TerminalRenderer {
   switch (mode) {
@@ -15,20 +18,12 @@ export function createRenderer({
       return new SilentRenderer(output);
 
     case 'verbose':
-      return new VerboseRenderer(output);
+      return new VerboseRenderer(output, { subagentTraceMode });
 
     case 'compact':
     default:
-      return new CompactRenderer(output);
+      return new CompactRenderer(output, { subagentTraceMode });
   }
 }
 
-export function loadTraceMode(env: NodeJS.ProcessEnv = process.env): TraceMode {
-  const mode = env.AGENT_TRACE;
-
-  if (mode === 'off' || mode === 'verbose' || mode === 'compact') {
-    return mode;
-  }
-
-  return 'compact';
-}
+export { loadTraceMode, loadSubagentTraceMode };

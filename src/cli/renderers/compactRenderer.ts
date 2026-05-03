@@ -1,14 +1,20 @@
 import type { AgentRunEvent } from '../../types.js';
-import type { RendererOutput, TerminalRenderer } from './types.js';
+import type { RendererOutput, SubagentTraceMode, TerminalRenderer } from './types.js';
 import { firstMeaningfulLine, formatBlock, MAX_MODEL_SUMMARY_CHARS } from './utils/text.js';
+import { formatSubagentProgressSummary, formatSubagentToolCompletion } from './utils/subagentProgressFormatter.js';
+import { CompactSubagentTracePolicy } from './utils/subagentTracePolicy.js';
 import { TodoTracker } from './utils/todoTracker.js';
 import { formatToolSummary } from './utils/toolSummary.js';
 
 export class CompactRenderer implements TerminalRenderer {
   private readonly todoTracker = new TodoTracker();
+  private readonly subagentTracePolicy = new CompactSubagentTracePolicy();
   private currentTurn = 0;
 
-  constructor(private readonly output: RendererOutput) {}
+  constructor(
+    private readonly output: RendererOutput,
+    private readonly options: { subagentTraceMode?: SubagentTraceMode } = {}
+  ) {}
 
   render(event: AgentRunEvent): void {
     switch (event.type) {
@@ -73,30 +79,42 @@ export class CompactRenderer implements TerminalRenderer {
   }
 
   private renderSubagentProgress(event: Extract<AgentRunEvent, { type: 'subagent_progress' }>): void {
+    const subagentTraceMode = this.options.subagentTraceMode ?? 'compact';
+    if (subagentTraceMode === 'off') {
+      return;
+    }
+
     switch (event.phase) {
       case 'started':
         this.output.write(`    ↳ ${event.message}\n`);
         break;
       case 'heartbeat':
+        if (!this.subagentTracePolicy.shouldRender(event, subagentTraceMode)) {
+          return;
+        }
         this.output.write(`    … [${event.subagent}] ${event.message}\n`);
         break;
       case 'model_turn_started':
+        if (!this.subagentTracePolicy.shouldRender(event, subagentTraceMode)) {
+          return;
+        }
         this.output.write(`    … [${event.subagent}] ${event.message}\n`);
         break;
       case 'tool_call_started':
         this.output.write(`    · [${event.subagent}] ${event.message}\n`);
         break;
       case 'tool_call_completed': {
-        const status = event.isError ? '✗' : '✓';
-        const duration = typeof event.durationMs === 'number' ? ` (${event.durationMs}ms)` : '';
-        this.output.write(`      ${status} [${event.subagent}] ${event.toolName ?? 'tool'}${duration}\n`);
+        const completion = formatSubagentToolCompletion(event);
+        const status = completion.slice(0, 1);
+        const detail = completion.slice(2);
+        this.output.write(`      ${status} [${event.subagent}] ${detail}\n`);
         break;
       }
       case 'completed':
-        this.output.write(`    ✓ [${event.subagent}] ${event.message}\n`);
+        this.output.write(`    ✓ [${event.subagent}] ${formatSubagentProgressSummary(event)}\n`);
         break;
       case 'failed':
-        this.output.write(`    ✗ [${event.subagent}] ${event.message}\n`);
+        this.output.write(`    ✗ [${event.subagent}] ${formatSubagentProgressSummary(event)}\n`);
         break;
     }
   }
