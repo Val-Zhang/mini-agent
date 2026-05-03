@@ -1,5 +1,5 @@
-import type { AgentRunEvent } from '../../types.js';
-import type { RendererOutput, TerminalRenderer } from './types.js';
+import type { AgentRunEvent } from '../../../types.js';
+import type { RendererOutput, TerminalRenderer } from '../types.js';
 
 export class SilentRenderer implements TerminalRenderer {
   constructor(private readonly output: RendererOutput) {}

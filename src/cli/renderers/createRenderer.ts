@@ -1,8 +1,8 @@
-import { CompactRenderer } from './compactRenderer.js';
+import { CompactRenderer } from './compact/index.js';
 import { loadSubagentTraceMode, loadTraceMode } from './rendererConfig.js';
-import { SilentRenderer } from './silentRenderer.js';
+import { SilentRenderer } from './silent/index.js';
 import type { RendererOutput, SubagentTraceMode, TerminalRenderer, TraceMode } from './types.js';
-import { VerboseRenderer } from './verboseRenderer.js';
+import { VerboseRenderer } from './verbose/index.js';
 
 export function createRenderer({
   mode = loadTraceMode(),

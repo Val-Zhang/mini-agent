@@ -1,9 +1,9 @@
-import type { AgentRunEvent } from '../../types.js';
-import type { RendererOutput, SubagentTraceMode, TerminalRenderer } from './types.js';
-import { formatBlock } from './utils/text.js';
-import { formatSubagentProgressSummary, formatSubagentToolCompletion } from './utils/subagentProgressFormatter.js';
-import { formatToolSummary } from './utils/toolSummary.js';
-import { TodoTracker } from './utils/todoTracker.js';
+import type { AgentRunEvent } from '../../../types.js';
+import type { RendererOutput, SubagentTraceMode, TerminalRenderer } from '../types.js';
+import { formatBlock } from '../utils/text.js';
+import { formatToolSummary } from '../utils/toolSummary.js';
+import { TodoTracker } from '../utils/todoTracker.js';
+import { renderVerboseSubagentProgress } from './utils/subagentProgress.js';
 
 export class VerboseRenderer implements TerminalRenderer {
   private readonly todoTracker = new TodoTracker();
@@ -52,7 +52,11 @@ export class VerboseRenderer implements TerminalRenderer {
         break;
 
       case 'subagent_progress':
-        this.renderSubagentProgress(event);
+        renderVerboseSubagentProgress({
+          output: this.output,
+          event,
+          traceMode: this.options.subagentTraceMode ?? 'compact'
+        });
         break;
 
       case 'run_completed':
@@ -61,31 +65,6 @@ export class VerboseRenderer implements TerminalRenderer {
 
       case 'run_failed':
         this.output.write(`error> ${event.error}\n\n`);
-        break;
-    }
-  }
-
-  private renderSubagentProgress(event: Extract<AgentRunEvent, { type: 'subagent_progress' }>): void {
-    const subagentTraceMode = this.options.subagentTraceMode ?? 'compact';
-    if (subagentTraceMode === 'off') {
-      return;
-    }
-
-    if (subagentTraceMode === 'compact' && event.phase === 'heartbeat') {
-      return;
-    }
-
-    switch (event.phase) {
-      case 'tool_call_completed': {
-        this.output.write(`subagent> [${event.subagent}] ${formatSubagentToolCompletion(event)}\n`);
-        break;
-      }
-      case 'completed':
-      case 'failed':
-        this.output.write(`subagent> [${event.subagent}] ${formatSubagentProgressSummary(event)}\n`);
-        break;
-      default:
-        this.output.write(`subagent> [${event.subagent}] ${event.message}\n`);
         break;
     }
   }
