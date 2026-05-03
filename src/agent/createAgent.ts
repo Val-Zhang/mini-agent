@@ -18,11 +18,12 @@ export async function createAgent({
     systemPrompt: SYSTEM_PROMPT,
     tools: createDefaultTools({
       workspaceRoot,
-      subagents: {
-        enabled: true,
-        model,
-        registry: subagentRegistry
-      }
+      subagents: subagentRegistry
+        ? {
+            model,
+            registry: subagentRegistry
+          }
+        : undefined
     })
   });
 }

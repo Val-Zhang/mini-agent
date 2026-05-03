@@ -113,7 +113,6 @@ test('default tools include task when subagents are enabled', async () => {
     const tools = createDefaultTools({
       workspaceRoot: workspace,
       subagents: {
-        enabled: true,
         model: new FakeModel(),
         registry: new SubagentRegistry([
           {
@@ -143,7 +142,6 @@ test('default tools fail fast when subagent tool allowlist references unknown to
         createDefaultTools({
           workspaceRoot: workspace,
           subagents: {
-            enabled: true,
             model: new FakeModel(),
             registry: new SubagentRegistry([
               {

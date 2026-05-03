@@ -43,7 +43,7 @@ subagents/general.md
 subagents/researcher.md
 ```
 
-`createAgent()` 启动时会读取 `subagents/*.md`，把多个 Markdown subagent 配置加载成 `SubagentRegistry`。`createDefaultTools({ workspaceRoot, subagents: { enabled: true, model, registry } })` 在显式开启 subagent 能力时注册 `task`。
+`createAgent()` 启动时会读取 `subagents/*.md`，把多个 Markdown subagent 配置加载成 `SubagentRegistry`。当目录缺失或为空时不注册 `task`；只有加载到配置后，`createDefaultTools({ workspaceRoot, subagents: { model, registry } })` 才会注册 `task`。
 
 `task` 工具会根据输入里的 `subagent` 名称选择配置：
 

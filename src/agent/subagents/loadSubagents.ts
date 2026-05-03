@@ -2,7 +2,6 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { SubagentRegistry } from './SubagentRegistry.js';
-import { DEFAULT_SUBAGENTS } from './defaults.js';
 import { parseMarkdownWithFrontmatter } from './frontmatter.js';
 import type { SubagentConfig } from './types.js';
 
@@ -12,12 +11,12 @@ export async function loadSubagentRegistry({
 }: {
   workspaceRoot: string;
   directory?: string;
-}): Promise<SubagentRegistry> {
+}): Promise<SubagentRegistry | null> {
   const directoryPath = join(workspaceRoot, directory);
   const files = await readSubagentFiles(directoryPath);
 
   if (files.length === 0) {
-    return new SubagentRegistry(DEFAULT_SUBAGENTS);
+    return null;
   }
 
   const configs = await Promise.all(

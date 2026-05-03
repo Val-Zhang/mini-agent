@@ -13,7 +13,6 @@ export function createDefaultTools({
 }: {
   workspaceRoot: string;
   subagents?: {
-    enabled: boolean;
     model: ModelClient;
     registry: SubagentRegistry;
   };
@@ -42,7 +41,7 @@ export function createDefaultTools({
 
   const tools = createBaseTools();
 
-  if (subagents?.enabled) {
+  if (subagents) {
     for (const subagent of subagents.registry.list()) {
       createBaseTools({ allowlist: subagent.tools });
     }

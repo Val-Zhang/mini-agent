@@ -69,6 +69,7 @@ test('loads multiple subagent markdown files from the workspace', async () => {
 
     const registry = await loadSubagentRegistry({ workspaceRoot: workspace });
 
+    assert.ok(registry);
     assert.deepEqual(registry.availableNames(), ['general', 'researcher']);
     assert.equal(registry.get('researcher')?.prompt, 'Research prompt.');
   } finally {
@@ -76,13 +77,12 @@ test('loads multiple subagent markdown files from the workspace', async () => {
   }
 });
 
-test('uses a built-in general subagent when no subagent directory exists', async () => {
+test('returns null when no subagent directory exists', async () => {
   const workspace = await createTempWorkspace();
   try {
     const registry = await loadSubagentRegistry({ workspaceRoot: workspace });
 
-    assert.deepEqual(registry.availableNames(), ['general']);
-    assert.match(registry.getDefault().prompt, /general purpose child agent/);
+    assert.equal(registry, null);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
