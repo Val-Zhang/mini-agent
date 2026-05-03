@@ -18,6 +18,11 @@ export type AgentRunEvent =
       toolCalls: ToolCall[];
     }
   | {
+      type: 'model_turn_delta';
+      turnCount: number;
+      contentDelta: string;
+    }
+  | {
       type: 'tool_call_started';
       toolCall: ToolCall;
     }
@@ -50,4 +55,8 @@ export type AgentRunEvent =
   | {
       type: 'run_failed';
       error: string;
+    }
+  | {
+      type: 'run_cancelled';
+      reason: string;
     };

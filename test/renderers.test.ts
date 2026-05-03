@@ -51,6 +51,19 @@ test('verbose renderer includes full tool input and output', () => {
   assert.match(text, /output>\n  Added todo/);
 });
 
+test('verbose renderer shows model delta stream output', () => {
+  const output = new MemoryOutput();
+  const renderer = createRenderer({ mode: 'verbose', output });
+
+  for (const event of streamingEvents()) {
+    renderer.render(event);
+  }
+
+  const text = output.toString();
+  assert.match(text, /delta>\n  Hello /);
+  assert.match(text, /delta>\n  world/);
+});
+
 test('renderers show subagent delegation summary for task tool', () => {
   const compactOutput = new MemoryOutput();
   const compactRenderer = createRenderer({ mode: 'compact', output: compactOutput });
@@ -112,6 +125,18 @@ test('silent renderer hides events but keeps final answer', () => {
   assert.match(text, /agent> 发送中/);
   assert.doesNotMatch(text, /todo add/);
   assert.match(text, /agent> done/);
+});
+
+test('renderers show cancellation message', () => {
+  const output = new MemoryOutput();
+  const renderer = createRenderer({ mode: 'compact', output });
+
+  for (const event of cancelledEvents()) {
+    renderer.render(event);
+  }
+
+  const text = output.toString();
+  assert.match(text, /cancelled> Run cancelled by user/);
 });
 
 function todoEvents(): AgentRunEvent[] {
@@ -337,6 +362,30 @@ function taskEventsWithManyTurns(): AgentRunEvent[] {
       turnCount: 3
     },
     { type: 'run_completed', content: 'done' }
+  ];
+}
+
+function streamingEvents(): AgentRunEvent[] {
+  return [
+    { type: 'run_started', input: 'message' },
+    { type: 'model_turn_started', turnCount: 1 },
+    { type: 'model_turn_delta', turnCount: 1, contentDelta: 'Hello ' },
+    { type: 'model_turn_delta', turnCount: 1, contentDelta: 'world' },
+    {
+      type: 'model_turn_completed',
+      turnCount: 1,
+      content: 'Hello world',
+      stopReason: 'stop',
+      toolCalls: []
+    },
+    { type: 'run_completed', content: 'Hello world' }
+  ];
+}
+
+function cancelledEvents(): AgentRunEvent[] {
+  return [
+    { type: 'run_started', input: 'message' },
+    { type: 'run_cancelled', reason: 'Run cancelled by user' }
   ];
 }
 

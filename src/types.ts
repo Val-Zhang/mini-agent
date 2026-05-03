@@ -14,12 +14,14 @@ export interface ChatMessage {
 
 export interface ModelClient {
   chat(messages: ChatMessage[], options?: ModelChatOptions): Promise<ModelResponse>;
+  streamChat?(messages: ChatMessage[], options?: ModelChatOptions): AsyncIterable<ModelStreamEvent>;
   capabilities?(): ModelCapabilities;
 }
 
 export interface ModelChatOptions {
   tools?: ToolDefinition[];
   temperature?: number;
+  signal?: AbortSignal;
 }
 
 export interface ModelCapabilities {
@@ -36,6 +38,16 @@ export interface ModelResponse {
   providerMetadata?: ProviderMetadata;
   raw: unknown;
 }
+
+export type ModelStreamEvent =
+  | {
+      type: 'delta';
+      contentDelta: string;
+    }
+  | {
+      type: 'completed';
+      response: ModelResponse;
+    };
 
 export interface ProviderMetadata {
   reasoningContent?: string;

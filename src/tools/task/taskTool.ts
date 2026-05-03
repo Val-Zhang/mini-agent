@@ -52,6 +52,10 @@ export function createTaskTool({
         return `Error: unknown subagent ${subagentName}. Available subagents: ${subagents.availableNames().join(', ')}`;
       }
 
+      if (context?.signal?.aborted) {
+        return 'Error: task cancelled by user';
+      }
+
       const childAgent = new AgentRunner({
         model,
         tools: createTools({ allowlist: subagent.tools }),
@@ -84,7 +88,7 @@ export function createTaskTool({
       }, SUBAGENT_HEARTBEAT_MS);
 
       try {
-        for await (const event of childAgent.run(input.description)) {
+        for await (const event of childAgent.run(input.description, { signal: context?.signal })) {
           switch (event.type) {
             case 'model_turn_started':
               childModelTurns = event.turnCount;
@@ -143,6 +147,18 @@ export function createTaskTool({
                 message: event.error
               });
               return `Error: subagent ${subagent.name} failed: ${event.error}`;
+
+            case 'run_cancelled':
+              emitSubagentProgress(context, {
+                subagent: subagent.name,
+                phase: 'failed',
+                elapsedMs: Date.now() - startedAt,
+                modelTurns: childModelTurns,
+                toolCalls: childToolCalls,
+                failedToolCalls: childFailedToolCalls,
+                message: event.reason
+              });
+              return 'Error: task cancelled by user';
 
             default:
               break;

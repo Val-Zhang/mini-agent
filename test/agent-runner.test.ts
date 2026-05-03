@@ -133,6 +133,54 @@ test('emits observable model and tool events with content', async () => {
   }
 });
 
+test('emits model delta events when stream chat is available', async () => {
+  const model = new StreamingFakeModel([
+    {
+      deltas: ['Hello ', 'world'],
+      response: {
+        content: 'Hello world',
+        toolCalls: [],
+        stopReason: 'stop',
+        raw: {}
+      }
+    }
+  ]);
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system'
+  });
+
+  const events = await collectEvents(runner.run('say hello'));
+  assert.equal(
+    events.some((event) => event.type === 'model_turn_delta' && event.contentDelta === 'Hello '),
+    true
+  );
+  assert.equal(
+    events.some((event) => event.type === 'model_turn_delta' && event.contentDelta === 'world'),
+    true
+  );
+  assert.equal(events.at(-1)?.type, 'run_completed');
+});
+
+test('emits run_cancelled when the run signal is aborted', async () => {
+  const controller = new AbortController();
+  controller.abort('Run cancelled by user');
+  const runner = new AgentRunner({
+    model: new FakeModel([]),
+    systemPrompt: 'test system'
+  });
+
+  const events = await collectEvents(runner.run('cancel me', { signal: controller.signal }));
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ['run_started', 'run_cancelled']
+  );
+  assert.equal(events[1].type, 'run_cancelled');
+  if (events[1].type === 'run_cancelled') {
+    assert.equal(events[1].reason, 'Run cancelled by user');
+  }
+});
+
 test('preserves provider metadata that must be replayed in assistant messages', async () => {
   const model = new FakeModel([
     {
@@ -472,5 +520,33 @@ class FakeModel {
       raw: {},
       ...response
     };
+  }
+}
+
+class StreamingFakeModel {
+  responses: Array<{
+    deltas: string[];
+    response: ModelResponse;
+  }>;
+
+  constructor(responses: Array<{ deltas: string[]; response: ModelResponse }>) {
+    this.responses = responses;
+  }
+
+  async chat(): Promise<ModelResponse> {
+    throw new Error('chat should not be called when streamChat is available');
+  }
+
+  async *streamChat(): AsyncGenerator<{ type: 'delta'; contentDelta: string } | { type: 'completed'; response: ModelResponse }> {
+    const next = this.responses.shift();
+    if (!next) {
+      throw new Error('StreamingFakeModel received an unexpected call');
+    }
+
+    for (const delta of next.deltas) {
+      yield { type: 'delta', contentDelta: delta };
+    }
+
+    yield { type: 'completed', response: next.response };
   }
 }

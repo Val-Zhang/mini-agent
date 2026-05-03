@@ -10,6 +10,8 @@ export class CompactRenderer implements TerminalRenderer {
   private readonly todoTracker = new TodoTracker();
   private readonly subagentTracePolicy = new CompactSubagentTracePolicy();
   private currentTurn = 0;
+  private pendingModelDelta = '';
+  private lastModelDeltaFlushAt = 0;
 
   constructor(
     private readonly output: RendererOutput,
@@ -23,12 +25,18 @@ export class CompactRenderer implements TerminalRenderer {
         break;
 
       case 'model_turn_started':
+        this.flushModelDelta();
         this.currentTurn = event.turnCount;
         this.output.write(`\n[${event.turnCount}] 模型\n`);
         break;
 
       case 'model_turn_completed':
+        this.flushModelDelta();
         this.renderModelContent(event.content);
+        break;
+
+      case 'model_turn_delta':
+        this.renderModelDelta(event.contentDelta);
         break;
 
       case 'tool_call_started':
@@ -54,7 +62,13 @@ export class CompactRenderer implements TerminalRenderer {
         break;
 
       case 'run_failed':
+        this.flushModelDelta();
         this.output.write(`error> ${event.error}\n\n`);
+        break;
+
+      case 'run_cancelled':
+        this.flushModelDelta();
+        this.output.write(`cancelled> ${event.reason}\n\n`);
         break;
     }
   }
@@ -81,5 +95,30 @@ export class CompactRenderer implements TerminalRenderer {
     if (event.isError || event.toolCall.name === 'todo_write') {
       this.output.write(formatBlock('output', event.content));
     }
+  }
+
+  private renderModelDelta(contentDelta: string): void {
+    if (!contentDelta) {
+      return;
+    }
+
+    this.pendingModelDelta += contentDelta;
+    const now = Date.now();
+    if (now - this.lastModelDeltaFlushAt < 100) {
+      return;
+    }
+
+    this.flushModelDelta();
+    this.lastModelDeltaFlushAt = now;
+  }
+
+  private flushModelDelta(): void {
+    if (!this.pendingModelDelta.trim()) {
+      this.pendingModelDelta = '';
+      return;
+    }
+
+    this.output.write(formatBlock('model~', this.pendingModelDelta, 300));
+    this.pendingModelDelta = '';
   }
 }

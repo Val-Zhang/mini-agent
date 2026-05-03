@@ -17,6 +17,10 @@ export class SilentRenderer implements TerminalRenderer {
       case 'run_failed':
         this.output.write(`error> ${event.error}\n\n`);
         break;
+
+      case 'run_cancelled':
+        this.output.write(`cancelled> ${event.reason}\n\n`);
+        break;
     }
   }
 }

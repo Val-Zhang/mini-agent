@@ -13,11 +13,13 @@ export interface ToolCallExecutionResult {
 export async function executeToolCallOnce({
   toolCall,
   tool,
-  emit
+  emit,
+  signal
 }: {
   toolCall: ToolCall;
   tool: ToolDefinition | undefined;
   emit: (event: ToolExecutionEvent) => void;
+  signal?: AbortSignal;
 }): Promise<ToolCallExecutionResult> {
   const startedAt = Date.now();
 
@@ -36,7 +38,7 @@ export async function executeToolCallOnce({
   }
 
   try {
-    const result = await tool.execute(toolCall.input ?? {}, { emit });
+    const result = await tool.execute(toolCall.input ?? {}, { emit, signal });
     const content = String(result ?? '');
     return {
       message: toToolResultMessage(toolCall, content),

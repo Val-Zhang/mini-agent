@@ -37,6 +37,12 @@ export class VerboseRenderer implements TerminalRenderer {
         }
         break;
 
+      case 'model_turn_delta':
+        if (event.contentDelta) {
+          this.output.write(formatBlock('delta', event.contentDelta, 500));
+        }
+        break;
+
       case 'tool_call_started':
         this.output.write(`tool> 调用 ${event.toolCall.name}\n`);
         if (event.toolCall.name === 'task') {
@@ -65,6 +71,10 @@ export class VerboseRenderer implements TerminalRenderer {
 
       case 'run_failed':
         this.output.write(`error> ${event.error}\n\n`);
+        break;
+
+      case 'run_cancelled':
+        this.output.write(`cancelled> ${event.reason}\n\n`);
         break;
     }
   }

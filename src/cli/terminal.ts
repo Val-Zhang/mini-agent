@@ -7,7 +7,7 @@ import { readUserMessage } from './inputEditor.js';
 import { createRenderer } from './renderers/createRenderer.js';
 
 interface TerminalAgent {
-  run(input: string): AsyncIterable<AgentRunEvent>;
+  run(input: string, options?: { signal?: AbortSignal }): AsyncIterable<AgentRunEvent>;
 }
 
 export async function startTerminal({ agent, config }: { agent: TerminalAgent; config: ModelConfig }): Promise<void> {
@@ -35,7 +35,14 @@ export async function startTerminal({ agent, config }: { agent: TerminalAgent; c
       break;
     }
 
-    await sendMessage(agent, message);
+    try {
+      await sendMessage(agent, message);
+    } catch (error: unknown) {
+      if (isTerminalExitRequest(error)) {
+        break;
+      }
+      throw error;
+    }
   }
 }
 
@@ -55,7 +62,14 @@ async function startLineModeTerminal(agent: TerminalAgent): Promise<void> {
       break;
     }
 
-    await sendMessage(agent, message);
+    try {
+      await sendMessage(agent, message);
+    } catch (error: unknown) {
+      if (isTerminalExitRequest(error)) {
+        break;
+      }
+      throw error;
+    }
     output.write('you> ');
   }
 
@@ -64,8 +78,37 @@ async function startLineModeTerminal(agent: TerminalAgent): Promise<void> {
 
 async function sendMessage(agent: TerminalAgent, message: string): Promise<void> {
   const renderer = createRenderer({ output });
+  const controller = new AbortController();
+  let exitRequested = false;
+  let cancellationRequested = false;
 
-  for await (const event of agent.run(message)) {
-    renderer.render(event);
+  const onSigint = () => {
+    if (!cancellationRequested) {
+      cancellationRequested = true;
+      controller.abort('Run cancelled by user');
+      output.write('\n^C 正在取消当前任务...\n');
+      return;
+    }
+
+    exitRequested = true;
+    controller.abort('Run cancelled by user');
+    output.write('\n^C 准备退出...\n');
+  };
+
+  process.on('SIGINT', onSigint);
+  try {
+    for await (const event of agent.run(message, { signal: controller.signal })) {
+      renderer.render(event);
+    }
+  } finally {
+    process.off('SIGINT', onSigint);
   }
+
+  if (exitRequested) {
+    throw new Error('TERMINAL_EXIT_REQUESTED');
+  }
+}
+
+function isTerminalExitRequest(error: unknown): boolean {
+  return error instanceof Error && error.message === 'TERMINAL_EXIT_REQUESTED';
 }

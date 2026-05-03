@@ -16,6 +16,7 @@ export interface ToolExecutionEvent {
 
 export interface ToolExecutionContext {
   emit(event: ToolExecutionEvent): void;
+  signal?: AbortSignal;
 }
 
 export interface ToolDefinition<TInput extends Record<string, unknown> = Record<string, unknown>> {

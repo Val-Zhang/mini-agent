@@ -9,6 +9,10 @@ export async function collectFinalResponse(events: AsyncIterable<AgentRunEvent>)
     if (event.type === 'run_failed') {
       throw new Error(event.error);
     }
+
+    if (event.type === 'run_cancelled') {
+      throw new Error(event.reason);
+    }
   }
 
   throw new Error('Agent run ended without a final response');
