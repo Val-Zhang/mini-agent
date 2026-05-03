@@ -1,5 +1,5 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { join, dirname } from 'path';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
 import type { PlanState, TodoItem, TodoStatus } from './types.js';
 
 export class TodoState {
@@ -15,9 +15,13 @@ export class TodoState {
     try {
       const content = await readFile(this.statePath, 'utf-8');
       this.state = JSON.parse(content);
-    } catch (error) {
-      // File doesn't exist yet, use empty state
-      this.state = { items: [] };
+    } catch (error: unknown) {
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        this.state = { items: [] };
+        return;
+      }
+
+      throw error;
     }
   }
 
@@ -95,4 +99,8 @@ export class TodoState {
 
     return lines.join('\n');
   }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error;
 }

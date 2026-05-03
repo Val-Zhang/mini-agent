@@ -2,10 +2,12 @@ import readlinePromises from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
 import type { ModelConfig } from '../config/localModelConfig.js';
+import type { AgentSendOptions } from '../types.js';
 import { readUserMessage } from './inputEditor.js';
+import { createRenderer } from './renderers/createRenderer.js';
 
 interface TerminalAgent {
-  send(input: string): Promise<string>;
+  send(input: string, options?: AgentSendOptions): Promise<string>;
 }
 
 export async function startTerminal({ agent, config }: { agent: TerminalAgent; config: ModelConfig }): Promise<void> {
@@ -61,12 +63,13 @@ async function startLineModeTerminal(agent: TerminalAgent): Promise<void> {
 }
 
 async function sendMessage(agent: TerminalAgent, message: string): Promise<void> {
+  const renderer = createRenderer({ output });
+
   try {
-    output.write('agent> 发送中...\n');
-    const reply = await agent.send(message);
-    output.write(`agent> ${reply}\n\n`);
+    renderer.renderStart(message);
+    const reply = await agent.send(message, { onEvent: (event) => renderer.renderEvent(event) });
+    renderer.renderFinal(reply);
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    output.write(`error> ${errorMessage}\n\n`);
+    renderer.renderError(error);
   }
 }

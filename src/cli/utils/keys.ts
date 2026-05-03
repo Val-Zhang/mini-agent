@@ -9,6 +9,9 @@ const MODIFIED_ENTER_SEQUENCES = new Set([
   '\u001b[13;10u'
 ]);
 
+export const BRACKETED_PASTE_START = '\u001b[200~';
+export const BRACKETED_PASTE_END = '\u001b[201~';
+
 export function isEnterKey(key: readline.Key): boolean {
   return key.name === 'return' || key.name === 'enter';
 }

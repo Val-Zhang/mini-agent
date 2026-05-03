@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { AgentRunner } from '../src/agent/AgentRunner.js';
-import type { ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
+import { AgentRunner, loadMaxTurns } from '../src/agent/AgentRunner.js';
+import type { AgentEvent, ChatMessage, ModelChatOptions, ModelResponse } from '../src/types.js';
 
 test('returns a final response when the model does not request tools', async () => {
   const model = new FakeModel([
@@ -69,6 +69,57 @@ test('executes tool calls, appends tool results, and continues the loop', async 
   );
   assert.equal(history[3].tool_call_id, 'call_1');
   assert.equal(history[3].content, 'observed value');
+});
+
+test('emits observable model and tool events with content', async () => {
+  const events: AgentEvent[] = [];
+  const model = new FakeModel([
+    {
+      content: 'I need to inspect the todo list.',
+      toolCalls: [
+        {
+          id: 'call_1',
+          name: 'echo',
+          input: { text: 'todo state' }
+        }
+      ],
+      stopReason: 'tool_calls'
+    },
+    {
+      content: 'The todo state is visible now.',
+      toolCalls: [],
+      stopReason: 'stop'
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    tools: [
+      {
+        name: 'echo',
+        async execute(input) {
+          return String(input.text);
+        }
+      }
+    ]
+  });
+
+  await runner.send('show trace', { onEvent: (event) => events.push(event) });
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ['model_turn_start', 'model_turn_end', 'tool_call_start', 'tool_call_end', 'model_turn_start', 'model_turn_end']
+  );
+  assert.equal(events[1].type, 'model_turn_end');
+  if (events[1].type === 'model_turn_end') {
+    assert.equal(events[1].content, 'I need to inspect the todo list.');
+    assert.equal(events[1].stopReason, 'tool_calls');
+  }
+  assert.equal(events[3].type, 'tool_call_end');
+  if (events[3].type === 'tool_call_end') {
+    assert.equal(events[3].content, 'todo state');
+  }
 });
 
 test('preserves provider metadata that must be replayed in assistant messages', async () => {
@@ -139,6 +190,13 @@ test('returns unknown tool errors as tool results', async () => {
   assert.equal(toolResult.role, 'tool');
   assert.equal(toolResult.name, 'missing_tool');
   assert.match(toolResult.content, /Unknown tool/);
+});
+
+test('loads max turns from environment with safe fallback', () => {
+  assert.equal(loadMaxTurns({}), 24);
+  assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: '32' }), 32);
+  assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: '0' }), 24);
+  assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: 'bad' }), 24);
 });
 
 class FakeModel {

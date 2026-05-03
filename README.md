@@ -42,6 +42,8 @@ MODEL_PROVIDER=local-openai-compatible
 MODEL_BASE_URL=http://localhost:11434/v1
 MODEL_NAME=qwen2.5-coder:7b
 MODEL_API_KEY=local
+AGENT_MAX_TURNS=24
+AGENT_TRACE=compact
 ```
 
 `MODEL_BASE_URL` 应指向 OpenAI-compatible API 的根路径，当前客户端会请求：
@@ -65,8 +67,10 @@ src/
   cli/
     inputEditor.ts       # TTY raw-mode 输入编辑器
     terminal.ts          # 终端输入输出循环
+    renderers/           # compact / verbose / off 输出渲染器
     utils/
       keys.ts            # Enter / modified Enter 键位识别
+      displayWidth.ts    # 输入渲染宽度估算
   config/
     localModelConfig.ts  # 模型 provider 配置读取
     envFile.ts           # 本地 .env 加载
