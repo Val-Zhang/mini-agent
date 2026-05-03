@@ -94,6 +94,32 @@ test('bash tool runs commands in the workspace', async () => {
   }
 });
 
+test('bash tool can be cancelled via abort signal', async () => {
+  const workspace = await createTempWorkspace();
+  const controller = new AbortController();
+  const tool = createBashTool({ workspaceRoot: workspace });
+  const timer = setTimeout(() => controller.abort('Run cancelled by user'), 50);
+
+  try {
+    await assert.rejects(
+      () =>
+        Promise.resolve(
+          tool.execute(
+            { command: 'sleep 5' },
+            {
+              emit: () => {},
+              signal: controller.signal
+            }
+          )
+        ),
+      /Run cancelled by user/
+    );
+  } finally {
+    clearTimeout(timer);
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test('default tools expose schemas for model tool calling', async () => {
   const workspace = await createTempWorkspace();
   try {

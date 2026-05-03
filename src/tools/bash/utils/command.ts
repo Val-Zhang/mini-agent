@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import type { ExecFileException } from 'node:child_process';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 200_000;
@@ -9,11 +10,12 @@ interface CommandResult {
   stderr: string;
 }
 
-export async function runBash(command: string, cwd: string): Promise<string> {
+export async function runBash(command: string, cwd: string, signal?: AbortSignal): Promise<string> {
   const result = await execFileResult('bash', ['-lc', command], {
     cwd,
     timeout: DEFAULT_TIMEOUT_MS,
-    maxBuffer: DEFAULT_MAX_OUTPUT_BYTES
+    maxBuffer: DEFAULT_MAX_OUTPUT_BYTES,
+    signal
   });
 
   return formatResult(result);
@@ -22,10 +24,15 @@ export async function runBash(command: string, cwd: string): Promise<string> {
 function execFileResult(
   file: string,
   args: string[],
-  options: { cwd: string; timeout: number; maxBuffer: number }
+  options: { cwd: string; timeout: number; maxBuffer: number; signal?: AbortSignal }
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     execFile(file, args, options, (error, stdout, stderr) => {
+      if (isAbortError(error, options.signal)) {
+        reject(new Error(cancellationReason(options.signal)));
+        return;
+      }
+
       if (error?.killed) {
         reject(new Error(`Command timed out after ${options.timeout}ms`));
         return;
@@ -38,6 +45,27 @@ function execFileResult(
       });
     });
   });
+}
+
+function isAbortError(error: ExecFileException | null, signal?: AbortSignal): boolean {
+  if (signal?.aborted) {
+    return true;
+  }
+
+  return error?.name === 'AbortError' || error?.code === 'ABORT_ERR';
+}
+
+function cancellationReason(signal?: AbortSignal): string {
+  const reason = signal?.reason;
+  if (typeof reason === 'string' && reason.trim()) {
+    return reason;
+  }
+
+  if (reason instanceof Error && reason.message) {
+    return reason.message;
+  }
+
+  return 'Command cancelled by user';
 }
 
 function formatResult({ exitCode, stdout, stderr }: CommandResult): string {

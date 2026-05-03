@@ -6,12 +6,12 @@ export function createBashTool({ workspaceRoot }: { workspaceRoot: string }): To
   return {
     name: 'bash',
     schema: bashSchema,
-    async execute(input) {
+    async execute(input, context) {
       if (typeof input.command !== 'string' || input.command.trim() === '') {
         throw new Error('command must be a non-empty string');
       }
 
-      return runBash(input.command, workspaceRoot);
+      return runBash(input.command, workspaceRoot, context?.signal);
     }
   };
 }
