@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -186,13 +187,68 @@ test('grep tool returns structured matches', async () => {
   }
 });
 
+test('web_fetch tool extracts content and source metadata', async () => {
+  const server = createServer((req, res) => {
+    if (!req.url) {
+      res.statusCode = 400;
+      res.end('missing');
+      return;
+    }
+
+    if (req.url === '/post') {
+      res.setHeader('content-type', 'text/html; charset=utf-8');
+      res.end(`
+        <html>
+          <head><title>Test Article</title></head>
+          <body>
+            <h1>Hello Agent</h1>
+            <p>This is a test page for web_fetch.</p>
+          </body>
+        </html>
+      `);
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end('not found');
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : null;
+  assert.ok(port);
+
+  try {
+    const workspace = await createTempWorkspace();
+    const sandbox = createPathSandbox(workspace);
+    const tools = new ToolRegistry(createDiscoveryTools({ sandbox }));
+    const webFetchTool = tools.get('web_fetch');
+    assert.ok(webFetchTool);
+
+    const result = await webFetchTool.execute({
+      url: `http://127.0.0.1:${port}/post`,
+      max_chars: 3000
+    });
+
+    assert.match(result, /URL: http:\/\/127\.0\.0\.1:\d+\/post/);
+    assert.match(result, /Status: 200/);
+    assert.match(result, /Content-Type: text\/html/);
+    assert.match(result, /Title: Test Article/);
+    assert.match(result, /Hello Agent/);
+    assert.match(result, /test page for web_fetch/);
+    await rm(workspace, { recursive: true, force: true });
+  } finally {
+    server.close();
+  }
+});
+
 test('default tools expose schemas for model tool calling', async () => {
   const workspace = await createTempWorkspace();
   try {
     const tools = createDefaultTools({ workspaceRoot: workspace });
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'todo_write', 'write_file']);
+    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'todo_write', 'web_fetch', 'write_file']);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
   } finally {
     await rm(workspace, { recursive: true, force: true });
@@ -219,7 +275,7 @@ test('default tools include task when subagents are enabled', async () => {
     });
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'task', 'todo_write', 'write_file']);
+    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'task', 'todo_write', 'web_fetch', 'write_file']);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
   } finally {
     await rm(workspace, { recursive: true, force: true });
