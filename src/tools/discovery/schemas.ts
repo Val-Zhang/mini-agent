@@ -104,3 +104,31 @@ export const grepSchema: ToolSchema = {
     additionalProperties: false
   }
 };
+
+export const webFetchSchema: ToolSchema = {
+  name: 'web_fetch',
+  description: 'Fetch a web page and return extracted text content with source metadata.',
+  parameters: {
+    type: 'object',
+    properties: {
+      url: {
+        type: 'string',
+        description: 'HTTP or HTTPS URL to fetch.'
+      },
+      max_chars: {
+        type: 'integer',
+        minimum: 200,
+        maximum: 50000,
+        description: 'Maximum number of extracted characters to return. Defaults to 6000.'
+      },
+      timeout_ms: {
+        type: 'integer',
+        minimum: 1000,
+        maximum: 60000,
+        description: 'Request timeout in milliseconds. Defaults to 10000.'
+      }
+    },
+    required: ['url'],
+    additionalProperties: false
+  }
+};
