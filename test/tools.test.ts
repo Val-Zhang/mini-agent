@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 import { SubagentRegistry } from '../src/agent/subagents/SubagentRegistry.js';
 import { createBashTool } from '../src/tools/bash/bashTool.js';
+import { createDiscoveryTools } from '../src/tools/discovery/discoveryTools.js';
 import { createDefaultTools } from '../src/tools/defaultTools.js';
 import { createFilesystemTools } from '../src/tools/filesystem/filesystemTools.js';
 import { createPathSandbox } from '../src/tools/core/pathSandbox.js';
@@ -120,13 +121,78 @@ test('bash tool can be cancelled via abort signal', async () => {
   }
 });
 
+test('list_dir tool lists entries with depth control', async () => {
+  const workspace = await createTempWorkspace();
+  try {
+    await writeFile(path.join(workspace, 'top.txt'), 'top', 'utf8');
+    await mkdir(path.join(workspace, 'src'), { recursive: true });
+    await writeFile(path.join(workspace, 'src', 'index.ts'), 'export {};', 'utf8');
+
+    const sandbox = createPathSandbox(workspace);
+    const tools = new ToolRegistry(createDiscoveryTools({ sandbox }));
+    const listDirTool = tools.get('list_dir');
+    assert.ok(listDirTool);
+
+    const result = await listDirTool.execute({ path: '.', depth: 2 });
+    assert.match(result, /Directory: \./);
+    assert.match(result, /\[file\] top\.txt/);
+    assert.match(result, /\[dir\] src/);
+    assert.match(result, /\[file\] src\/index\.ts/);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('glob tool matches paths under workspace', async () => {
+  const workspace = await createTempWorkspace();
+  try {
+    await mkdir(path.join(workspace, 'src'), { recursive: true });
+    await writeFile(path.join(workspace, 'src', 'index.ts'), 'export const a = 1;', 'utf8');
+    await writeFile(path.join(workspace, 'src', 'helper.js'), 'module.exports = {};', 'utf8');
+
+    const sandbox = createPathSandbox(workspace);
+    const tools = new ToolRegistry(createDiscoveryTools({ sandbox }));
+    const globTool = tools.get('glob');
+    assert.ok(globTool);
+
+    const result = await globTool.execute({ pattern: 'src/**/*.ts' });
+    assert.match(result, /Pattern: src\/\*\*\/\*\.ts/);
+    assert.match(result, /- src\/index\.ts/);
+    assert.doesNotMatch(result, /helper\.js/);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('grep tool returns structured matches', async () => {
+  const workspace = await createTempWorkspace();
+  try {
+    await mkdir(path.join(workspace, 'src'), { recursive: true });
+    await writeFile(path.join(workspace, 'src', 'alpha.ts'), 'const token = "abc123";\n', 'utf8');
+    await writeFile(path.join(workspace, 'src', 'beta.ts'), 'const token = "xyz";\n', 'utf8');
+
+    const sandbox = createPathSandbox(workspace);
+    const tools = new ToolRegistry(createDiscoveryTools({ sandbox }));
+    const grepTool = tools.get('grep');
+    assert.ok(grepTool);
+
+    const result = await grepTool.execute({ pattern: 'abc123', path: 'src' });
+    assert.match(result, /Pattern: abc123/);
+    assert.match(result, /Search path: src/);
+    assert.match(result, /- src\/alpha\.ts:\d+:\d+ \|/);
+    assert.doesNotMatch(result, /beta\.ts/);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test('default tools expose schemas for model tool calling', async () => {
   const workspace = await createTempWorkspace();
   try {
     const tools = createDefaultTools({ workspaceRoot: workspace });
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['bash', 'edit_file', 'read_file', 'todo_write', 'write_file']);
+    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'todo_write', 'write_file']);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
   } finally {
     await rm(workspace, { recursive: true, force: true });
@@ -153,7 +219,7 @@ test('default tools include task when subagents are enabled', async () => {
     });
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['bash', 'edit_file', 'read_file', 'task', 'todo_write', 'write_file']);
+    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'task', 'todo_write', 'write_file']);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
   } finally {
     await rm(workspace, { recursive: true, force: true });

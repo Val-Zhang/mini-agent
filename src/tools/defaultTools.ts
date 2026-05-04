@@ -1,4 +1,5 @@
 import { createBashTool } from './bash/bashTool.js';
+import { createDiscoveryTools } from './discovery/discoveryTools.js';
 import { createFilesystemTools } from './filesystem/filesystemTools.js';
 import { createTaskTool } from './task/taskTool.js';
 import { createTodoTool } from './todo/todoTool.js';
@@ -20,6 +21,7 @@ export function createDefaultTools({
   const sandbox = createPathSandbox(workspaceRoot);
   const createBaseTools = ({ allowlist }: { allowlist?: string[] } = {}) => {
     const tools = [
+      ...createDiscoveryTools({ sandbox }),
       createBashTool({ workspaceRoot: sandbox.root }),
       ...createFilesystemTools({ sandbox }),
       createTodoTool({ workspaceRoot: sandbox.root })
