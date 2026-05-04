@@ -24,6 +24,22 @@ export class CompactRenderer implements TerminalRenderer {
         this.output.write('agent> 发送中...\n');
         break;
 
+      case 'mode_changed':
+        if (event.mode === 'plan') {
+          this.output.write('mode> plan（只规划，不执行命令和写入）\n\n');
+        } else {
+          this.output.write('mode> execute（允许执行工具）\n\n');
+        }
+        break;
+
+      case 'plan_status_changed':
+        this.output.write(`plan> ${event.message}\n\n`);
+        break;
+
+      case 'implementation_started':
+        this.output.write(`plan> ${event.message}\n\n`);
+        break;
+
       case 'model_turn_started':
         this.flushModelDelta();
         this.currentTurn = event.turnCount;

@@ -10,6 +10,29 @@ export interface ToolCallExecutionResult {
   event: ToolCallCompletedEvent;
 }
 
+export function createToolCallExecutionResult({
+  toolCall,
+  content,
+  isError,
+  durationMs
+}: {
+  toolCall: ToolCall;
+  content: string;
+  isError: boolean;
+  durationMs: number;
+}): ToolCallExecutionResult {
+  return {
+    message: toToolResultMessage(toolCall, content, isError),
+    event: {
+      type: 'tool_call_completed',
+      toolCall,
+      isError,
+      content,
+      durationMs
+    }
+  };
+}
+
 export async function executeToolCallOnce({
   toolCall,
   tool,
@@ -25,43 +48,31 @@ export async function executeToolCallOnce({
 
   if (!tool) {
     const content = `Unknown tool: ${toolCall.name}`;
-    return {
-      message: toToolResultMessage(toolCall, content, true),
-      event: {
-        type: 'tool_call_completed',
-        toolCall,
-        isError: true,
-        content,
-        durationMs: Date.now() - startedAt
-      }
-    };
+    return createToolCallExecutionResult({
+      toolCall,
+      content,
+      isError: true,
+      durationMs: Date.now() - startedAt
+    });
   }
 
   try {
     const result = await tool.execute(toolCall.input ?? {}, { emit, signal });
     const content = String(result ?? '');
-    return {
-      message: toToolResultMessage(toolCall, content),
-      event: {
-        type: 'tool_call_completed',
-        toolCall,
-        isError: false,
-        content,
-        durationMs: Date.now() - startedAt
-      }
-    };
+    return createToolCallExecutionResult({
+      toolCall,
+      content,
+      isError: false,
+      durationMs: Date.now() - startedAt
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      message: toToolResultMessage(toolCall, message, true),
-      event: {
-        type: 'tool_call_completed',
-        toolCall,
-        isError: true,
-        content: message,
-        durationMs: Date.now() - startedAt
-      }
-    };
+    return createToolCallExecutionResult({
+      toolCall,
+      content: message,
+      isError: true,
+      durationMs: Date.now() - startedAt
+    });
   }
 }
 

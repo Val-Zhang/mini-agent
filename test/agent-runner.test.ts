@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AgentRunner, loadMaxTurns } from '../src/agent/AgentRunner.js';
+import { PLAN_MODE_SYSTEM_PROMPT } from '../src/agent/prompts/plan.js';
 import { SubagentRegistry } from '../src/agent/subagents/SubagentRegistry.js';
 import { createTaskTool, loadTaskMaxTurns } from '../src/tools/task/taskTool.js';
 import type { ToolDefinition } from '../src/tools/core/types.js';
@@ -179,6 +180,56 @@ test('emits run_cancelled when the run signal is aborted', async () => {
   if (events[1].type === 'run_cancelled') {
     assert.equal(events[1].reason, 'Run cancelled by user');
   }
+});
+
+test('run_started includes the selected mode', async () => {
+  const runner = new AgentRunner({
+    model: new FakeModel([{ content: 'done', toolCalls: [] }]),
+    systemPrompt: 'test system'
+  });
+
+  const events = await collectEvents(runner.run('hi', { mode: 'plan' }));
+  assert.equal(events[0].type, 'run_started');
+  if (events[0].type === 'run_started') {
+    assert.equal(events[0].mode, 'plan');
+  }
+});
+
+test('plan mode uses plan system prompt and read-only tool visibility', async () => {
+  const model = new FakeModel([{ content: 'Plan drafted.', toolCalls: [] }]);
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'base system',
+    tools: [
+      {
+        name: 'read_file',
+        async execute() {
+          return 'read';
+        }
+      },
+      {
+        name: 'write_file',
+        async execute() {
+          return 'write';
+        }
+      },
+      {
+        name: 'todo_write',
+        async execute() {
+          return 'todo';
+        }
+      }
+    ]
+  });
+
+  await runner.send('Make a plan', { mode: 'plan' });
+
+  assert.equal(model.calls.length, 1);
+  assert.equal(model.calls[0][1].role, 'system');
+  assert.equal(model.calls[0][1].content, PLAN_MODE_SYSTEM_PROMPT);
+
+  const visibleTools = model.options[0]?.tools?.map((tool) => tool.name).sort();
+  assert.deepEqual(visibleTools, ['read_file', 'todo_write']);
 });
 
 test('preserves provider metadata that must be replayed in assistant messages', async () => {
@@ -472,6 +523,98 @@ test('task tool streams subagent progress events to parent run output', async ()
   );
 });
 
+test('plan mode blocks side-effect tools', async () => {
+  let writeCalls = 0;
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_write',
+          name: 'write_file',
+          input: { path: 'a.txt', content: 'hello' }
+        }
+      ]
+    },
+    {
+      content: 'Plan ready.',
+      toolCalls: []
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    tools: [
+      {
+        name: 'write_file',
+        async execute() {
+          writeCalls += 1;
+          return 'written';
+        }
+      }
+    ]
+  });
+
+  const events = await collectEvents(runner.run('Create file', { mode: 'plan' }));
+  const completed = events.find(
+    (event) => event.type === 'tool_call_completed' && event.toolCall.id === 'call_write'
+  );
+
+  assert.equal(writeCalls, 0);
+  assert.ok(completed);
+  if (completed?.type === 'tool_call_completed') {
+    assert.equal(completed.isError, true);
+    assert.match(completed.content, /Plan mode: write_file is disabled/);
+  }
+});
+
+test('plan mode still allows read-only planning tools', async () => {
+  let readCalls = 0;
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_read',
+          name: 'read_file',
+          input: { path: 'README.md' }
+        }
+      ]
+    },
+    {
+      content: 'Read complete.',
+      toolCalls: []
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    tools: [
+      {
+        name: 'read_file',
+        async execute() {
+          readCalls += 1;
+          return 'content';
+        }
+      }
+    ]
+  });
+
+  const events = await collectEvents(runner.run('Read first', { mode: 'plan' }));
+  const completed = events.find(
+    (event) => event.type === 'tool_call_completed' && event.toolCall.id === 'call_read'
+  );
+
+  assert.equal(readCalls, 1);
+  assert.ok(completed);
+  if (completed?.type === 'tool_call_completed') {
+    assert.equal(completed.isError, false);
+    assert.equal(completed.content, 'content');
+  }
+});
+
 test('loads max turns from environment with safe fallback', () => {
   assert.equal(loadMaxTurns({}), 24);
   assert.equal(loadMaxTurns({ AGENT_MAX_TURNS: '32' }), 32);
@@ -499,14 +642,20 @@ async function collectEvents(events: AsyncIterable<AgentRunEvent>): Promise<Agen
 class FakeModel {
   responses: Array<Partial<ModelResponse>>;
   calls: ChatMessage[][];
+  options: ModelChatOptions[];
 
   constructor(responses: Array<Partial<ModelResponse>>) {
     this.responses = responses;
     this.calls = [];
+    this.options = [];
   }
 
-  async chat(messages: ChatMessage[], _options?: ModelChatOptions): Promise<ModelResponse> {
+  async chat(messages: ChatMessage[], options?: ModelChatOptions): Promise<ModelResponse> {
     this.calls.push(messages.map((message) => ({ ...message })));
+    this.options.push({
+      ...options,
+      tools: options?.tools ? [...options.tools] : undefined
+    });
     const response = this.responses.shift();
 
     if (!response) {

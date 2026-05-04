@@ -1,6 +1,9 @@
 import type { ToolDefinition } from './tools/core/types.js';
 export type { AgentRunEvent } from './agent/run/events.js';
 
+export type AgentMode = 'execute' | 'plan';
+export type PlanStatus = 'none' | 'needs_approval' | 'approved';
+
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface ChatMessage {

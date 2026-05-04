@@ -1,13 +1,15 @@
-import type { ChatMessage, ModelClient, ModelResponse, ToolCall } from '../types.js';
+import type { AgentMode, ChatMessage, ModelClient, ModelResponse, ToolCall } from '../types.js';
 import type { AgentRunEvent } from './run/events.js';
 import { collectFinalResponse } from './run/collectFinalResponse.js';
 import { mapSubagentProgressEvent } from './run/subagentProgress.js';
-import { executeToolCallOnce, streamExecutionProgress } from './run/toolExecution.js';
+import { createToolCallExecutionResult, executeToolCallOnce, streamExecutionProgress } from './run/toolExecution.js';
+import { blockedToolMessage, isToolAllowedInMode, toolsForMode, withModeSystemPrompt } from './mode/policy.js';
 import { ToolRegistry } from '../tools/core/ToolRegistry.js';
 import type { ToolDefinition, ToolExecutionEvent } from '../tools/core/types.js';
 import { toAssistantMessage } from './utils/messages.js';
 
 const DEFAULT_MAX_TURNS = 24;
+const DEFAULT_MODE: AgentMode = 'execute';
 
 export function loadMaxTurns(env: NodeJS.ProcessEnv = process.env): number {
   const value = env.AGENT_MAX_TURNS;
@@ -32,6 +34,7 @@ interface AgentRunnerOptions {
 
 interface RunOptions {
   signal?: AbortSignal;
+  mode?: AgentMode;
 }
 
 export class AgentRunner {
@@ -49,7 +52,8 @@ export class AgentRunner {
 
   async *run(input: string, options: RunOptions = {}): AsyncGenerator<AgentRunEvent> {
     const signal = options.signal;
-    yield { type: 'run_started', input };
+    const mode = options.mode ?? DEFAULT_MODE;
+    yield { type: 'run_started', input, mode };
     if (signal?.aborted) {
       yield { type: 'run_cancelled', reason: cancellationReason(signal) };
       return;
@@ -61,7 +65,7 @@ export class AgentRunner {
       for (let turnCount = 1; turnCount <= this.maxTurns; turnCount += 1) {
         assertNotAborted(signal);
         yield { type: 'model_turn_started', turnCount };
-        const turn = this.executeModelTurn(turnCount, signal);
+        const turn = this.executeModelTurn(turnCount, mode, signal);
         let response: ModelResponse | undefined;
         while (true) {
           const next = await turn.next();
@@ -92,7 +96,7 @@ export class AgentRunner {
           return;
         }
 
-        yield* this.runToolCalls(response.toolCalls, signal);
+        yield* this.runToolCalls(response.toolCalls, mode, signal);
       }
 
       throw new Error(`Agent loop exceeded max turns (${this.maxTurns})`);
@@ -113,18 +117,22 @@ export class AgentRunner {
 
   private async *executeModelTurn(
     turnCount: number,
+    mode: AgentMode,
     signal?: AbortSignal
   ): AsyncGenerator<Extract<AgentRunEvent, { type: 'model_turn_delta' }>, ModelResponse> {
+    const tools = toolsForMode(this.tools.list(), mode);
+    const messages = withModeSystemPrompt(this.history, mode);
+
     if (!this.model.streamChat) {
-      return this.model.chat(this.history, {
-        tools: this.tools.list(),
+      return this.model.chat(messages, {
+        tools,
         signal
       });
     }
 
     let response: ModelResponse | undefined;
-    for await (const event of this.model.streamChat(this.history, {
-      tools: this.tools.list(),
+    for await (const event of this.model.streamChat(messages, {
+      tools,
       signal
     })) {
       if (event.type === 'delta') {
@@ -144,11 +152,15 @@ export class AgentRunner {
     return response;
   }
 
-  private async *runToolCalls(toolCalls: ToolCall[], signal?: AbortSignal): AsyncGenerator<AgentRunEvent> {
+  private async *runToolCalls(
+    toolCalls: ToolCall[],
+    mode: AgentMode,
+    signal?: AbortSignal
+  ): AsyncGenerator<AgentRunEvent> {
     for (const toolCall of toolCalls) {
       assertNotAborted(signal);
       yield { type: 'tool_call_started', toolCall };
-      const execution = this.executeToolCall(toolCall, signal);
+      const execution = this.executeToolCall(toolCall, mode, signal);
       let toolResult:
         | {
             message: ChatMessage;
@@ -175,13 +187,23 @@ export class AgentRunner {
     }
   }
 
-  private async *executeToolCall(toolCall: ToolCall, signal?: AbortSignal): AsyncGenerator<
+  private async *executeToolCall(toolCall: ToolCall, mode: AgentMode, signal?: AbortSignal): AsyncGenerator<
     Extract<AgentRunEvent, { type: 'subagent_progress' }>,
     {
       message: ChatMessage;
       event: Extract<AgentRunEvent, { type: 'tool_call_completed' }>;
     }
   > {
+    if (!isToolAllowedInMode(toolCall.name, mode)) {
+      const content = blockedToolMessage(toolCall.name, mode);
+      return createToolCallExecutionResult({
+        toolCall,
+        content,
+        isError: true,
+        durationMs: 0
+      });
+    }
+
     return yield* streamExecutionProgress({
       execute: (emit: (event: ToolExecutionEvent) => void) =>
         executeToolCallOnce({

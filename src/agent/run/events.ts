@@ -1,10 +1,24 @@
-import type { ToolCall } from '../../types.js';
+import type { AgentMode, PlanStatus, ToolCall } from '../../types.js';
 import type { SubagentProgressPhase } from './subagentProgress.js';
 
 export type AgentRunEvent =
   | {
       type: 'run_started';
       input: string;
+      mode: AgentMode;
+    }
+  | {
+      type: 'mode_changed';
+      mode: AgentMode;
+    }
+  | {
+      type: 'plan_status_changed';
+      status: PlanStatus;
+      message: string;
+    }
+  | {
+      type: 'implementation_started';
+      message: string;
     }
   | {
       type: 'model_turn_started';

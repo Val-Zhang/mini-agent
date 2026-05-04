@@ -33,6 +33,19 @@ npm start
 
 CLI 会自动读取本地 `.env`。如果模型服务没有启动或 API 配置错误，CLI 会提示连接失败。后续我们会把模型 provider、工具层和 agent loop 拆得更细。
 
+常用命令：
+
+- `/plan`：切换到规划模式，只生成计划，不执行命令和写入类工具。
+- `/approve`：批准当前 plan 草案。
+- `/reject`：丢弃当前 plan 草案。
+- `/implement`：执行已批准的 plan（自动进入 execute 模式）。
+- `/execute`：切换到执行模式，允许正常工具执行。
+- `/mode`：查看当前模式和 plan 状态。
+- `/exit`：退出 CLI。
+
+在 `plan` 模式下，agent 只会看到并允许只读规划工具（当前为 `read_file`、`todo_write`）。即使模型尝试调用写入/命令类工具，也会在执行层被拦截。
+计划草案会保存在 `memories/session/plan.md`，`/mode` 会显示当前计划状态和摘要。
+
 ## 配置
 
 通过环境变量配置模型 provider：

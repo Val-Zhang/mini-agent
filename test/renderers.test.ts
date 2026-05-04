@@ -139,9 +139,40 @@ test('renderers show cancellation message', () => {
   assert.match(text, /cancelled> Run cancelled by user/);
 });
 
+test('renderers show mode changes', () => {
+  const output = new MemoryOutput();
+  const renderer = createRenderer({ mode: 'compact', output });
+
+  renderer.render({ type: 'mode_changed', mode: 'plan' });
+  renderer.render({ type: 'mode_changed', mode: 'execute' });
+
+  const text = output.toString();
+  assert.match(text, /mode> plan（只规划，不执行命令和写入）/);
+  assert.match(text, /mode> execute（允许执行工具）/);
+});
+
+test('renderers show plan workflow events', () => {
+  const output = new MemoryOutput();
+  const renderer = createRenderer({ mode: 'compact', output });
+
+  renderer.render({
+    type: 'plan_status_changed',
+    status: 'needs_approval',
+    message: '计划草案已生成。请使用 /approve 批准，或 /reject 丢弃。'
+  });
+  renderer.render({
+    type: 'implementation_started',
+    message: '开始执行已批准计划。'
+  });
+
+  const text = output.toString();
+  assert.match(text, /plan> 计划草案已生成/);
+  assert.match(text, /plan> 开始执行已批准计划/);
+});
+
 function todoEvents(): AgentRunEvent[] {
   return [
-    { type: 'run_started', input: 'message' },
+    { type: 'run_started', input: 'message', mode: 'execute' },
     { type: 'model_turn_started', turnCount: 1 },
     {
       type: 'model_turn_completed',
@@ -201,7 +232,7 @@ function todoEvents(): AgentRunEvent[] {
 
 function taskEvents(): AgentRunEvent[] {
   return [
-    { type: 'run_started', input: 'message' },
+    { type: 'run_started', input: 'message', mode: 'execute' },
     { type: 'model_turn_started', turnCount: 1 },
     {
       type: 'model_turn_completed',
@@ -328,7 +359,7 @@ function taskEvents(): AgentRunEvent[] {
 
 function taskEventsWithManyTurns(): AgentRunEvent[] {
   return [
-    { type: 'run_started', input: 'message' },
+    { type: 'run_started', input: 'message', mode: 'execute' },
     { type: 'model_turn_started', turnCount: 1 },
     {
       type: 'model_turn_completed',
@@ -367,7 +398,7 @@ function taskEventsWithManyTurns(): AgentRunEvent[] {
 
 function streamingEvents(): AgentRunEvent[] {
   return [
-    { type: 'run_started', input: 'message' },
+    { type: 'run_started', input: 'message', mode: 'execute' },
     { type: 'model_turn_started', turnCount: 1 },
     { type: 'model_turn_delta', turnCount: 1, contentDelta: 'Hello ' },
     { type: 'model_turn_delta', turnCount: 1, contentDelta: 'world' },
@@ -384,7 +415,7 @@ function streamingEvents(): AgentRunEvent[] {
 
 function cancelledEvents(): AgentRunEvent[] {
   return [
-    { type: 'run_started', input: 'message' },
+    { type: 'run_started', input: 'message', mode: 'execute' },
     { type: 'run_cancelled', reason: 'Run cancelled by user' }
   ];
 }
