@@ -2,7 +2,7 @@ import type { AgentMode, ChatMessage } from '../../types.js';
 import type { ToolDefinition } from '../../tools/core/types.js';
 import { PLAN_MODE_SYSTEM_PROMPT } from '../prompts/plan.js';
 
-const PLAN_MODE_ALLOWED_TOOLS = new Set(['read_file', 'todo_write', 'list_dir', 'glob', 'grep', 'web_fetch']);
+const PLAN_MODE_ALLOWED_TOOLS = new Set(['read_file', 'todo_write', 'list_dir', 'glob', 'grep', 'web_fetch', 'load_skill']);
 
 export function isToolAllowedInMode(toolName: string, mode: AgentMode): boolean {
   if (mode === 'execute') {

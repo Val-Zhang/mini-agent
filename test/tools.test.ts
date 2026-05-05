@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
+import { SkillRegistry } from '../src/agent/skills/SkillRegistry.js';
 import { SubagentRegistry } from '../src/agent/subagents/SubagentRegistry.js';
 import { createBashTool } from '../src/tools/bash/bashTool.js';
 import { createDiscoveryTools } from '../src/tools/discovery/discoveryTools.js';
@@ -245,10 +246,25 @@ test('web_fetch tool extracts content and source metadata', async () => {
 test('default tools expose schemas for model tool calling', async () => {
   const workspace = await createTempWorkspace();
   try {
-    const tools = createDefaultTools({ workspaceRoot: workspace });
+    const tools = createDefaultTools({
+      workspaceRoot: workspace,
+      skills: new SkillRegistry([])
+    });
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'todo_write', 'web_fetch', 'write_file']);
+    assert.deepEqual(names, [
+      'bash',
+      'edit_file',
+      'glob',
+      'grep',
+      'list_dir',
+      'load_skill',
+      'read_file',
+      'run_skill',
+      'todo_write',
+      'web_fetch',
+      'write_file'
+    ]);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
   } finally {
     await rm(workspace, { recursive: true, force: true });
@@ -260,6 +276,7 @@ test('default tools include task when subagents are enabled', async () => {
   try {
     const tools = createDefaultTools({
       workspaceRoot: workspace,
+      skills: new SkillRegistry([]),
       subagents: {
         model: new FakeModel(),
         registry: new SubagentRegistry([
@@ -275,7 +292,20 @@ test('default tools include task when subagents are enabled', async () => {
     });
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['bash', 'edit_file', 'glob', 'grep', 'list_dir', 'read_file', 'task', 'todo_write', 'web_fetch', 'write_file']);
+    assert.deepEqual(names, [
+      'bash',
+      'edit_file',
+      'glob',
+      'grep',
+      'list_dir',
+      'load_skill',
+      'read_file',
+      'run_skill',
+      'task',
+      'todo_write',
+      'web_fetch',
+      'write_file'
+    ]);
     assert.ok(tools.every((tool) => tool.schema?.parameters?.type === 'object'));
   } finally {
     await rm(workspace, { recursive: true, force: true });
@@ -289,6 +319,7 @@ test('default tools fail fast when subagent tool allowlist references unknown to
       () =>
         createDefaultTools({
           workspaceRoot: workspace,
+          skills: new SkillRegistry([]),
           subagents: {
             model: new FakeModel(),
             registry: new SubagentRegistry([

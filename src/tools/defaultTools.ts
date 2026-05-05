@@ -1,18 +1,23 @@
 import { createBashTool } from './bash/bashTool.js';
 import { createDiscoveryTools } from './discovery/discoveryTools.js';
 import { createFilesystemTools } from './filesystem/filesystemTools.js';
+import { createLoadSkillTool } from './skills/loadSkillTool.js';
+import { createRunSkillTool } from './skills/runSkillTool.js';
 import { createTaskTool } from './task/taskTool.js';
 import { createTodoTool } from './todo/todoTool.js';
 import { createPathSandbox } from './core/pathSandbox.js';
 import type { ToolDefinition } from './core/types.js';
+import type { SkillRegistry } from '../agent/skills/SkillRegistry.js';
 import type { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import type { ModelClient } from '../types.js';
 
 export function createDefaultTools({
   workspaceRoot,
+  skills,
   subagents
 }: {
   workspaceRoot: string;
+  skills: SkillRegistry;
   subagents?: {
     model: ModelClient;
     registry: SubagentRegistry;
@@ -24,7 +29,9 @@ export function createDefaultTools({
       ...createDiscoveryTools({ sandbox }),
       createBashTool({ workspaceRoot: sandbox.root }),
       ...createFilesystemTools({ sandbox }),
-      createTodoTool({ workspaceRoot: sandbox.root })
+      createTodoTool({ workspaceRoot: sandbox.root }),
+      createLoadSkillTool({ skills }),
+      createRunSkillTool({ skills })
     ];
 
     if (!allowlist) {
