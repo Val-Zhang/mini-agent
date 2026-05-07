@@ -114,23 +114,29 @@ test('emits observable model and tool events with content', async () => {
     events.map((event) => event.type),
     [
       'run_started',
+      'context_usage_updated',
       'model_turn_started',
       'model_turn_completed',
       'tool_call_started',
       'tool_call_completed',
+      'context_usage_updated',
       'model_turn_started',
       'model_turn_completed',
       'run_completed'
     ]
   );
-  assert.equal(events[2].type, 'model_turn_completed');
-  if (events[2].type === 'model_turn_completed') {
-    assert.equal(events[2].content, 'I need to inspect the todo list.');
-    assert.equal(events[2].stopReason, 'tool_calls');
+  assert.equal(events[1].type, 'context_usage_updated');
+  if (events[1].type === 'context_usage_updated') {
+    assert.equal(events[1].usage.status, 'normal');
   }
-  assert.equal(events[4].type, 'tool_call_completed');
-  if (events[4].type === 'tool_call_completed') {
-    assert.equal(events[4].content, 'todo state');
+  assert.equal(events[3].type, 'model_turn_completed');
+  if (events[3].type === 'model_turn_completed') {
+    assert.equal(events[3].content, 'I need to inspect the todo list.');
+    assert.equal(events[3].stopReason, 'tool_calls');
+  }
+  assert.equal(events[5].type, 'tool_call_completed');
+  if (events[5].type === 'tool_call_completed') {
+    assert.equal(events[5].content, 'todo state');
   }
 });
 

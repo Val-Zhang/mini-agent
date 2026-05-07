@@ -113,6 +113,22 @@ test('compact subagent trace throttles model turn chatter', () => {
   assert.match(text, /\[researcher\] 模型第 3 轮/);
 });
 
+
+test('renderers show context usage and compaction events', () => {
+  const output = new MemoryOutput();
+  const renderer = createRenderer({ mode: 'compact', output });
+  const usage = contextUsageEvent().usage;
+
+  renderer.render({ type: 'context_usage_updated', usage, message: '当前上下文占用' });
+  renderer.render({ type: 'compaction_started', reason: 'manual', before: usage });
+  renderer.render({ type: 'compaction_completed', reason: 'manual', before: usage, after: { ...usage, usagePercent: 0.25 }, summaryTokens: 123 });
+
+  const text = output.toString();
+  assert.match(text, /context> 当前上下文占用/);
+  assert.match(text, /compact> 开始压缩/);
+  assert.match(text, /compact> 完成 70% -> 25%，summary 123 tokens/);
+});
+
 test('silent renderer hides events but keeps final answer', () => {
   const output = new MemoryOutput();
   const renderer = createRenderer({ mode: 'off', output });
@@ -169,6 +185,29 @@ test('renderers show plan workflow events', () => {
   assert.match(text, /plan> 计划草案已生成/);
   assert.match(text, /plan> 开始执行已批准计划/);
 });
+
+
+function contextUsageEvent(): Extract<AgentRunEvent, { type: 'context_usage_updated' }> {
+  return {
+    type: 'context_usage_updated',
+    usage: {
+      contextWindow: 1000,
+      reservedOutputTokens: 100,
+      usableInputTokens: 900,
+      estimatedInputTokens: 630,
+      usagePercent: 0.7,
+      status: 'warn',
+      breakdown: {
+        system: 100,
+        mode: 0,
+        tools: 100,
+        summary: 50,
+        recentMessages: 300,
+        toolResults: 80
+      }
+    }
+  };
+}
 
 function todoEvents(): AgentRunEvent[] {
   return [

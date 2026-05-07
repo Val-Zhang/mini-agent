@@ -4,6 +4,7 @@ import { firstMeaningfulLine, formatBlock, MAX_MODEL_SUMMARY_CHARS } from '../ut
 import { CompactSubagentTracePolicy } from '../utils/subagentTracePolicy.js';
 import { TodoTracker } from '../utils/todoTracker.js';
 import { formatToolSummary } from '../utils/toolSummary.js';
+import { formatContextUsageLine } from '../utils/contextUsage.js';
 import { renderCompactSubagentProgress } from './utils/subagentProgress.js';
 
 export class CompactRenderer implements TerminalRenderer {
@@ -38,6 +39,24 @@ export class CompactRenderer implements TerminalRenderer {
 
       case 'implementation_started':
         this.output.write(`plan> ${event.message}\n\n`);
+        break;
+
+      case 'compaction_started':
+        this.output.write(`compact> 开始压缩（${event.reason}） ${formatContextUsageLine(event.before)}\n`);
+        break;
+
+      case 'compaction_completed':
+        this.output.write(
+          `compact> 完成 ${Math.round(event.before.usagePercent * 100)}% -> ${Math.round(
+            event.after.usagePercent * 100
+          )}%，summary ${event.summaryTokens} tokens\n\n`
+        );
+        break;
+
+      case 'context_usage_updated':
+        if (event.message || event.usage.status !== 'normal') {
+          this.output.write(`context> ${event.message ? `${event.message} ` : ''}${formatContextUsageLine(event.usage)}\n`);
+        }
         break;
 
       case 'model_turn_started':

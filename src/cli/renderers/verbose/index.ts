@@ -4,6 +4,7 @@ import { formatBlock } from '../utils/text.js';
 import { formatToolSummary } from '../utils/toolSummary.js';
 import { TodoTracker } from '../utils/todoTracker.js';
 import { renderVerboseSubagentProgress } from './utils/subagentProgress.js';
+import { formatContextUsageDetails } from '../utils/contextUsage.js';
 
 export class VerboseRenderer implements TerminalRenderer {
   private readonly todoTracker = new TodoTracker();
@@ -33,6 +34,22 @@ export class VerboseRenderer implements TerminalRenderer {
 
       case 'implementation_started':
         this.output.write(`plan> ${event.message}\n\n`);
+        break;
+
+      case 'compaction_started':
+        this.output.write(`compact> 开始压缩（${event.reason}）\n`);
+        break;
+
+      case 'compaction_completed':
+        this.output.write(
+          `compact> 完成 ${Math.round(event.before.usagePercent * 100)}% -> ${Math.round(
+            event.after.usagePercent * 100
+          )}%，summary ${event.summaryTokens} tokens\n\n`
+        );
+        break;
+
+      case 'context_usage_updated':
+        this.output.write(`context> ${event.message ? `${event.message}\n` : ''}${formatContextUsageDetails(event.usage)}\n\n`);
         break;
 
       case 'model_turn_started':

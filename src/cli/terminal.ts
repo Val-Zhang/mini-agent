@@ -19,11 +19,19 @@ import { createRenderer } from './renderers/createRenderer.js';
 
 interface TerminalAgent {
   run(input: string, options?: { signal?: AbortSignal; mode?: AgentMode }): AsyncIterable<AgentRunEvent>;
+  getContextUsage?(mode?: AgentMode): import('../types.js').ContextUsage;
+  compact?(options?: { mode?: AgentMode; reason?: string; workspaceRoot?: string }): Promise<{
+    reason: string;
+    before: import('../types.js').ContextUsage;
+    after: import('../types.js').ContextUsage;
+    summary: string;
+    summaryTokens: number;
+  }>;
 }
 
 export async function startTerminal({ agent, config }: { agent: TerminalAgent; config: ModelConfig }): Promise<void> {
   output.write(`mini-agent using ${config.provider}:${config.model} at ${config.baseUrl}\n`);
-  output.write('Type /plan, /approve, /reject, /implement, /execute, /mode, /exit.\n\n');
+  output.write('Type /plan, /approve, /reject, /implement, /execute, /mode, /context, /compact, /exit.\n\n');
 
   if (!input.isTTY || !output.isTTY) {
     await startLineModeTerminal(agent);
@@ -241,6 +249,39 @@ async function executeTerminalCommand({
         message: summary ? `${describePlanStatus(planState.status)} 摘要：${summary}` : describePlanStatus(planState.status)
       });
     }
+    return { handled: true, mode, planState, exitRequested: false };
+  }
+
+  if (message === '/context') {
+    if (!agent.getContextUsage) {
+      output.write('context> 当前 agent 不支持上下文统计。\n\n');
+      return { handled: true, mode, planState, exitRequested: false };
+    }
+
+    emitTerminalEvent({
+      type: 'context_usage_updated',
+      usage: agent.getContextUsage(mode),
+      message: '当前上下文占用'
+    });
+    return { handled: true, mode, planState, exitRequested: false };
+  }
+
+  if (message === '/compact') {
+    if (!agent.compact || !agent.getContextUsage) {
+      output.write('compact> 当前 agent 不支持上下文压缩。\n\n');
+      return { handled: true, mode, planState, exitRequested: false };
+    }
+
+    const before = agent.getContextUsage(mode);
+    emitTerminalEvent({ type: 'compaction_started', reason: 'manual', before });
+    const result = await agent.compact({ mode, reason: 'manual', workspaceRoot });
+    emitTerminalEvent({
+      type: 'compaction_completed',
+      reason: result.reason,
+      before: result.before,
+      after: result.after,
+      summaryTokens: result.summaryTokens
+    });
     return { handled: true, mode, planState, exitRequested: false };
   }
 
