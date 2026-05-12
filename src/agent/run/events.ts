@@ -1,4 +1,5 @@
 import type { AgentMode, PlanStatus, ToolCall } from '../../types.js';
+import type { ContextUsage } from '../context/types.js';
 import type { SubagentProgressPhase } from './subagentProgress.js';
 
 export type AgentRunEvent =
@@ -19,6 +20,23 @@ export type AgentRunEvent =
   | {
       type: 'implementation_started';
       message: string;
+    }
+  | {
+      type: 'compaction_started';
+      reason: string;
+      before: ContextUsage;
+    }
+  | {
+      type: 'compaction_completed';
+      reason: string;
+      before: ContextUsage;
+      after: ContextUsage;
+      summaryTokens: number;
+    }
+  | {
+      type: 'context_usage_updated';
+      usage: ContextUsage;
+      message?: string;
     }
   | {
       type: 'model_turn_started';

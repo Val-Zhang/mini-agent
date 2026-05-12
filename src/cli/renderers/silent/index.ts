@@ -1,6 +1,8 @@
 import type { AgentRunEvent } from '../../../types.js';
 import type { RendererOutput, TerminalRenderer } from '../types.js';
 
+import { formatContextUsageLine } from '../utils/contextUsage.js';
+
 export class SilentRenderer implements TerminalRenderer {
   constructor(private readonly output: RendererOutput) {}
 
@@ -15,6 +17,24 @@ export class SilentRenderer implements TerminalRenderer {
           this.output.write('mode> plan（只规划，不执行命令和写入）\n\n');
         } else {
           this.output.write('mode> execute（允许执行工具）\n\n');
+        }
+        break;
+
+      case 'compaction_started':
+        this.output.write(`compact> 开始压缩（${event.reason}） ${formatContextUsageLine(event.before)}\n`);
+        break;
+
+      case 'compaction_completed':
+        this.output.write(
+          `compact> 完成 ${Math.round(event.before.usagePercent * 100)}% -> ${Math.round(
+            event.after.usagePercent * 100
+          )}%，summary ${event.summaryTokens} tokens\n\n`
+        );
+        break;
+
+      case 'context_usage_updated':
+        if (event.message) {
+          this.output.write(`context> ${event.message} ${formatContextUsageLine(event.usage)}\n\n`);
         }
         break;
 
