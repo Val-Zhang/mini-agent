@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { AgentRunner, loadMaxTurns } from '../src/agent/AgentRunner.js';
 import { HookRegistry } from '../src/agent/hooks/HookRegistry.js';
+import { MemoryManager } from '../src/agent/memory/memoryManager.js';
 import { PLAN_MODE_SYSTEM_PROMPT } from '../src/agent/prompts/plan.js';
 import { SubagentRegistry } from '../src/agent/subagents/SubagentRegistry.js';
 import { createTaskTool, loadTaskMaxTurns } from '../src/tools/task/taskTool.js';
@@ -902,6 +903,32 @@ test('pre tool hook can block tool execution', async () => {
   if (completed?.type === 'tool_call_completed') {
     assert.equal(completed.isError, true);
     assert.match(completed.content, /Blocked by hook blocker: nope/);
+  }
+});
+
+test('injects long-term memory into model context', async () => {
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const fs = await import('node:fs/promises');
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-runner-memory-'));
+  try {
+    const memory = new MemoryManager(workspace);
+    await memory.remember('project_fact', 'Project uses NodeNext modules.');
+    const model = new FakeModel([{ content: 'Done.', toolCalls: [] }]);
+    const runner = new AgentRunner({
+      model,
+      systemPrompt: 'test system',
+      memory
+    });
+
+    await runner.send('hello');
+
+    assert.match(
+      model.calls[0].map((message) => message.content).join('\n'),
+      /Long-term memory:\n\n## Project Facts\n- Project uses NodeNext modules/
+    );
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
   }
 });
 

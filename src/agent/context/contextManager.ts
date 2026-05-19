@@ -23,13 +23,18 @@ export class ContextManager {
     return { ...this.config };
   }
 
-  estimate({ history, tools, mode, compactSummary }: BuildContextInput): ContextUsage {
-    return this.calculateUsage({ messages: this.messagesWithModeAndSummary(history, mode, compactSummary), tools, compactSummary });
+  estimate({ history, tools, mode, compactSummary, memorySummary }: BuildContextInput): ContextUsage {
+    return this.calculateUsage({
+      messages: this.messagesWithModeAndSummary(history, mode, compactSummary, memorySummary),
+      tools,
+      compactSummary,
+      memorySummary
+    });
   }
 
-  buildActiveContext({ history, tools, mode, compactSummary }: BuildContextInput): ActiveContextResult {
-    const fullMessages = this.messagesWithModeAndSummary(history, mode, compactSummary);
-    const usage = this.calculateUsage({ messages: fullMessages, tools, compactSummary });
+  buildActiveContext({ history, tools, mode, compactSummary, memorySummary }: BuildContextInput): ActiveContextResult {
+    const fullMessages = this.messagesWithModeAndSummary(history, mode, compactSummary, memorySummary);
+    const usage = this.calculateUsage({ messages: fullMessages, tools, compactSummary, memorySummary });
     const usableInputTokens = Math.max(1, this.config.contextWindow - this.config.reservedOutputTokens);
     const hardBudget = Math.max(1, usableInputTokens - this.estimator.countTools(tools));
 
@@ -40,12 +45,17 @@ export class ContextManager {
     const trimmed = this.trimMessagesToBudget(fullMessages, hardBudget);
     return {
       messages: trimmed,
-      usage: this.calculateUsage({ messages: trimmed, tools, compactSummary }),
+      usage: this.calculateUsage({ messages: trimmed, tools, compactSummary, memorySummary }),
       didTrim: true
     };
   }
 
-  private messagesWithModeAndSummary(history: ChatMessage[], mode: AgentMode, compactSummary?: string): ChatMessage[] {
+  private messagesWithModeAndSummary(
+    history: ChatMessage[],
+    mode: AgentMode,
+    compactSummary?: string,
+    memorySummary?: string
+  ): ChatMessage[] {
     const [first, ...rest] = history;
     const messages = first ? [{ ...first }] : [];
 
@@ -55,6 +65,10 @@ export class ContextManager {
 
     if (compactSummary?.trim()) {
       messages.push({ role: 'system', content: `Compacted prior session context:\n\n${compactSummary.trim()}` });
+    }
+
+    if (memorySummary?.trim()) {
+      messages.push({ role: 'system', content: `Long-term memory:\n\n${memorySummary.trim()}` });
     }
 
     messages.push(...rest.map((message) => ({ ...message })));
@@ -82,7 +96,7 @@ export class ContextManager {
     return [...prefix, ...selected];
   }
 
-  private calculateUsage({ messages, tools, compactSummary }: CalculateUsageInput): ContextUsage {
+  private calculateUsage({ messages, tools, compactSummary, memorySummary }: CalculateUsageInput): ContextUsage {
     const breakdown: ContextUsageBreakdown = {
       system: 0,
       mode: 0,
@@ -96,7 +110,11 @@ export class ContextManager {
       const tokens = this.estimator.countMessage(message);
       if (message.role === 'system' && message.content === PLAN_MODE_SYSTEM_PROMPT) {
         breakdown.mode += tokens;
-      } else if (message.role === 'system' && compactSummary && message.content.includes(compactSummary.trim())) {
+      } else if (
+        message.role === 'system' &&
+        ((compactSummary && message.content.includes(compactSummary.trim())) ||
+          (memorySummary && message.content.includes(memorySummary.trim())))
+      ) {
         breakdown.summary += tokens;
       } else if (message.role === 'system') {
         breakdown.system += tokens;
@@ -128,12 +146,14 @@ interface BuildContextInput {
   tools: ToolDefinition[];
   mode: AgentMode;
   compactSummary?: string;
+  memorySummary?: string;
 }
 
 interface CalculateUsageInput {
   messages: ChatMessage[];
   tools: ToolDefinition[];
   compactSummary?: string;
+  memorySummary?: string;
 }
 
 function statusForUsage(usagePercent: number, config: ContextConfig): ContextUsageStatus {

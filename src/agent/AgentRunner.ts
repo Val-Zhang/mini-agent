@@ -9,6 +9,7 @@ import { ApproximateTokenEstimator } from './context/tokenEstimator.js';
 import { PermissionManager } from './permissions/permissionManager.js';
 import type { PermissionConfirmer } from './permissions/types.js';
 import { HookRegistry } from './hooks/HookRegistry.js';
+import { MemoryManager } from './memory/memoryManager.js';
 import { collectFinalResponse } from './run/collectFinalResponse.js';
 import { mapSubagentProgressEvent } from './run/subagentProgress.js';
 import { createToolCallExecutionResult, executeToolCallOnce, streamExecutionProgress } from './run/toolExecution.js';
@@ -46,6 +47,7 @@ interface AgentRunnerOptions {
   permissionManager?: PermissionManager;
   confirmPermission?: PermissionConfirmer;
   hooks?: HookRegistry;
+  memory?: MemoryManager;
 }
 
 interface RunOptions {
@@ -80,6 +82,7 @@ export class AgentRunner {
   private readonly permissionManager: PermissionManager;
   private readonly confirmPermission?: PermissionConfirmer;
   private readonly hooks: HookRegistry;
+  private readonly memory?: MemoryManager;
   private compactSummary: string;
   private compactedMessageCount: number;
 
@@ -94,7 +97,8 @@ export class AgentRunner {
     compactSummary = '',
     permissionManager = new PermissionManager(),
     confirmPermission,
-    hooks = new HookRegistry()
+    hooks = new HookRegistry(),
+    memory
   }: AgentRunnerOptions) {
     this.model = model;
     this.tools = new ToolRegistry(tools);
@@ -106,6 +110,7 @@ export class AgentRunner {
     this.permissionManager = permissionManager;
     this.confirmPermission = confirmPermission;
     this.hooks = hooks;
+    this.memory = memory;
     this.compactSummary = compactSummary;
     this.compactedMessageCount = compactSummary ? this.history.length : 0;
   }
@@ -130,7 +135,7 @@ export class AgentRunner {
       sessionStarted = true;
       for (let turnCount = 1; turnCount <= this.maxTurns; turnCount += 1) {
         assertNotAborted(signal);
-        let usage = this.getContextUsage(mode);
+        let usage = await this.getContextUsage(mode);
         if (usage.usagePercent >= this.context.getConfig().compactThreshold && this.canCompact()) {
           yield { type: 'compaction_started', reason: 'auto', before: usage };
           const result = await this.compact({ mode, reason: 'auto', workspaceRoot: this.workspaceRoot, preserveLastMessages: 1 });
@@ -217,7 +222,8 @@ export class AgentRunner {
       history: this.activeHistoryForContext(),
       tools,
       mode,
-      compactSummary: this.compactSummary
+      compactSummary: this.compactSummary,
+      memorySummary: await this.loadMemorySummary()
     });
 
     if (!this.model.streamChat) {
@@ -354,13 +360,14 @@ export class AgentRunner {
     return this.history.map((message) => ({ ...message }));
   }
 
-  getContextUsage(mode: AgentMode = DEFAULT_MODE): ContextUsage {
+  async getContextUsage(mode: AgentMode = DEFAULT_MODE): Promise<ContextUsage> {
     const tools = toolsForMode(this.tools.list(), mode);
     return this.context.estimate({
       history: this.activeHistoryForContext(),
       tools,
       mode,
-      compactSummary: this.compactSummary
+      compactSummary: this.compactSummary,
+      memorySummary: await this.loadMemorySummary()
     });
   }
 
@@ -374,7 +381,7 @@ export class AgentRunner {
     workspaceRoot,
     preserveLastMessages = 0
   }: CompactOptions = {}): Promise<CompactionResult> {
-    const before = this.getContextUsage(mode);
+    const before = await this.getContextUsage(mode);
     const prompt = buildCompactionPrompt(this.history, this.context.getConfig().summaryMaxTokens);
     const response = await this.model.chat(
       [
@@ -394,7 +401,7 @@ export class AgentRunner {
       await this.transcript.appendCompact(summary, this.history.length);
     }
 
-    const after = this.getContextUsage(mode);
+    const after = await this.getContextUsage(mode);
     const summaryTokens = new ApproximateTokenEstimator().countText(summary);
     return { reason, before, after, summary, summaryTokens };
   }
@@ -406,6 +413,10 @@ export class AgentRunner {
 
   private canCompact(): boolean {
     return this.history.length > 1 && this.compactedMessageCount < this.history.length;
+  }
+
+  private async loadMemorySummary(): Promise<string> {
+    return this.memory ? this.memory.buildSummary() : '';
   }
 
   private activeHistoryForContext(): ChatMessage[] {

@@ -37,6 +37,16 @@ test('permission manager asks before file writes unless a plan is approved', () 
   assert.equal(manager.check({ ...request, planApproved: true }).decision, 'allow');
 });
 
+test('permission manager asks before writing long-term memory', () => {
+  const manager = new PermissionManager();
+  const result = manager.check({
+    mode: 'execute',
+    toolCall: toolCall('remember', { scope: 'project_fact', content: 'Project uses TypeScript.' })
+  });
+
+  assert.equal(result.decision, 'ask');
+});
+
 test('permission manager preserves execute-mode extensibility for unknown tools', () => {
   const manager = new PermissionManager();
   const result = manager.check({

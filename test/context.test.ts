@@ -57,6 +57,36 @@ test('context manager estimates usage and injects compact summary', () => {
   assert.ok(result.usage.breakdown.summary > 0);
 });
 
+test('context manager injects long-term memory separately from compact summary', () => {
+  const manager = new ContextManager({
+    config: {
+      contextWindow: 1000,
+      reservedOutputTokens: 100,
+      warnThreshold: 0.4,
+      compactThreshold: 0.6,
+      criticalThreshold: 0.8,
+      recentMessageMinTokens: 100,
+      summaryMaxTokens: 100
+    }
+  });
+  const history: ChatMessage[] = [
+    { role: 'system', content: 'system prompt' },
+    { role: 'user', content: 'hello' }
+  ];
+
+  const result = manager.buildActiveContext({
+    history,
+    tools: [],
+    mode: 'execute',
+    compactSummary: 'Previous work summary.',
+    memorySummary: '## Project Facts\n- Project uses NodeNext.'
+  });
+
+  assert.match(result.messages[1].content, /Compacted prior session context/);
+  assert.match(result.messages[2].content, /Long-term memory/);
+  assert.match(result.messages[2].content, /Project uses NodeNext/);
+});
+
 test('context manager trims old messages when estimated input exceeds budget', () => {
   const manager = new ContextManager({
     config: {

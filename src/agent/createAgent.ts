@@ -5,6 +5,7 @@ import { loadSubagentRegistry } from './subagents/loadSubagents.js';
 import { loadCompactSummary } from './context/transcriptStore.js';
 import type { PermissionConfirmer } from './permissions/types.js';
 import { createDefaultHookRegistry } from './hooks/defaultHooks.js';
+import { MemoryManager } from './memory/memoryManager.js';
 import { createDefaultTools } from '../tools/defaultTools.js';
 import type { ModelClient } from '../types.js';
 
@@ -20,6 +21,7 @@ export async function createAgent({
   const subagentRegistry = await loadSubagentRegistry({ workspaceRoot });
   const skillRegistry = await loadSkillRegistry({ workspaceRoot });
   const compactSummary = await loadCompactSummary(workspaceRoot);
+  const memory = new MemoryManager(workspaceRoot);
 
   return new AgentRunner({
     model,
@@ -29,6 +31,7 @@ export async function createAgent({
     compactSummary,
     confirmPermission,
     hooks: createDefaultHookRegistry(workspaceRoot),
+    memory,
     tools: createDefaultTools({
       workspaceRoot,
       skills: skillRegistry,

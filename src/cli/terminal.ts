@@ -19,7 +19,7 @@ import { createRenderer } from './renderers/createRenderer.js';
 
 interface TerminalAgent {
   run(input: string, options?: { signal?: AbortSignal; mode?: AgentMode; planApproved?: boolean }): AsyncIterable<AgentRunEvent>;
-  getContextUsage?(mode?: AgentMode): import('../types.js').ContextUsage;
+  getContextUsage?(mode?: AgentMode): Promise<import('../types.js').ContextUsage>;
   compact?(options?: { mode?: AgentMode; reason?: string; workspaceRoot?: string }): Promise<{
     reason: string;
     before: import('../types.js').ContextUsage;
@@ -278,7 +278,7 @@ async function executeTerminalCommand({
 
     emitTerminalEvent({
       type: 'context_usage_updated',
-      usage: agent.getContextUsage(mode),
+      usage: await agent.getContextUsage(mode),
       message: '当前上下文占用'
     });
     return { handled: true, mode, planState, exitRequested: false };
@@ -290,7 +290,7 @@ async function executeTerminalCommand({
       return { handled: true, mode, planState, exitRequested: false };
     }
 
-    const before = agent.getContextUsage(mode);
+    const before = await agent.getContextUsage(mode);
     emitTerminalEvent({ type: 'compaction_started', reason: 'manual', before });
     const result = await agent.compact({ mode, reason: 'manual', workspaceRoot });
     emitTerminalEvent({

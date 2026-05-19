@@ -4,7 +4,7 @@ import type { PermissionRequest, PermissionResult } from './types.js';
 
 const PLAN_MODE_ALLOWED_TOOLS = new Set(['read_file', 'todo_write', 'list_dir', 'glob', 'grep', 'web_fetch', 'load_skill']);
 const READ_ONLY_TOOLS = new Set(['read_file', 'todo_write', 'list_dir', 'glob', 'grep', 'web_fetch', 'load_skill']);
-const WRITE_TOOLS = new Set(['write_file', 'edit_file']);
+const WRITE_TOOLS = new Set(['write_file', 'edit_file', 'remember']);
 
 export class PermissionManager {
   check(request: PermissionRequest): PermissionResult {
