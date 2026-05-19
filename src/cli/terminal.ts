@@ -2,7 +2,7 @@ import readlinePromises from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
 import type { ModelConfig } from '../config/localModelConfig.js';
-import type { AgentMode, AgentRunEvent } from '../types.js';
+import type { AgentMode, AgentRunEvent, PermissionConfirmer, PermissionConfirmation } from '../types.js';
 import {
   approvePlan,
   clearPlanSessionState,
@@ -18,7 +18,7 @@ import { readUserMessage } from './inputEditor.js';
 import { createRenderer } from './renderers/createRenderer.js';
 
 interface TerminalAgent {
-  run(input: string, options?: { signal?: AbortSignal; mode?: AgentMode }): AsyncIterable<AgentRunEvent>;
+  run(input: string, options?: { signal?: AbortSignal; mode?: AgentMode; planApproved?: boolean }): AsyncIterable<AgentRunEvent>;
   getContextUsage?(mode?: AgentMode): import('../types.js').ContextUsage;
   compact?(options?: { mode?: AgentMode; reason?: string; workspaceRoot?: string }): Promise<{
     reason: string;
@@ -27,6 +27,23 @@ interface TerminalAgent {
     summary: string;
     summaryTokens: number;
   }>;
+}
+
+export function createTerminalPermissionConfirmer(): PermissionConfirmer {
+  return async (confirmation) => {
+    if (!input.isTTY || !output.isTTY) {
+      return false;
+    }
+
+    output.write(formatPermissionPrompt(confirmation));
+    const rl = readlinePromises.createInterface({ input, output });
+    try {
+      const answer = await rl.question('Allow? [y/N] ');
+      return answer.trim().toLowerCase() === 'y' || answer.trim().toLowerCase() === 'yes';
+    } finally {
+      rl.close();
+    }
+  };
 }
 
 export async function startTerminal({ agent, config }: { agent: TerminalAgent; config: ModelConfig }): Promise<void> {
@@ -168,7 +185,8 @@ async function startLineModeTerminal(agent: TerminalAgent): Promise<void> {
 async function sendMessage(
   agent: TerminalAgent,
   message: string,
-  mode: AgentMode
+  mode: AgentMode,
+  options: { planApproved?: boolean } = {}
 ): Promise<{ completedContent: string | null }> {
   const renderer = createRenderer({ output });
   const controller = new AbortController();
@@ -191,7 +209,7 @@ async function sendMessage(
 
   process.on('SIGINT', onSigint);
   try {
-    for await (const event of agent.run(message, { signal: controller.signal, mode })) {
+    for await (const event of agent.run(message, { signal: controller.signal, mode, planApproved: options.planApproved })) {
       renderer.render(event);
       if (event.type === 'run_completed') {
         completedContent = event.content;
@@ -343,7 +361,7 @@ async function executeTerminalCommand({
       type: 'implementation_started',
       message: '开始执行已批准计划。'
     });
-    await sendMessage(agent, prompt, 'execute');
+    await sendMessage(agent, prompt, 'execute', { planApproved: true });
     return { handled: true, mode: 'execute', planState, exitRequested: false };
   }
 
@@ -353,6 +371,17 @@ async function executeTerminalCommand({
 function emitTerminalEvent(event: AgentRunEvent): void {
   const renderer = createRenderer({ output });
   renderer.render(event);
+}
+
+function formatPermissionPrompt({ request, result }: PermissionConfirmation): string {
+  const inputPreview = JSON.stringify(request.toolCall.input, null, 2);
+  return [
+    `permission> ${request.toolCall.name} needs confirmation`,
+    `reason: ${result.reason}`,
+    'input:',
+    inputPreview,
+    ''
+  ].join('\n');
 }
 
 function describePlanStatus(status: PlanSessionState['status']): string {

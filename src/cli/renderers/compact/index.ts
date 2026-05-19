@@ -59,6 +59,12 @@ export class CompactRenderer implements TerminalRenderer {
         }
         break;
 
+      case 'permission_decided':
+        if (event.decision !== 'allow') {
+          this.output.write(`permission> ${event.decision} ${event.toolCall.name}: ${event.reason}\n`);
+        }
+        break;
+
       case 'model_turn_started':
         this.flushModelDelta();
         this.currentTurn = event.turnCount;

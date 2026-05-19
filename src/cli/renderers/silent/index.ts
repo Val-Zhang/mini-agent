@@ -38,6 +38,12 @@ export class SilentRenderer implements TerminalRenderer {
         }
         break;
 
+      case 'permission_decided':
+        if (event.decision !== 'allow') {
+          this.output.write(`permission> ${event.decision} ${event.toolCall.name}: ${event.reason}\n\n`);
+        }
+        break;
+
       case 'plan_status_changed':
         this.output.write(`plan> ${event.message}\n\n`);
         break;

@@ -6,10 +6,13 @@ import type { ContextConfig, ContextUsage } from './context/types.js';
 import { loadCompactSummary, saveCompactSummary, TranscriptStore } from './context/transcriptStore.js';
 import { buildCompactionPrompt } from './context/compactionPrompt.js';
 import { ApproximateTokenEstimator } from './context/tokenEstimator.js';
+import { PermissionManager } from './permissions/permissionManager.js';
+import type { PermissionConfirmer } from './permissions/types.js';
+import { HookRegistry } from './hooks/HookRegistry.js';
 import { collectFinalResponse } from './run/collectFinalResponse.js';
 import { mapSubagentProgressEvent } from './run/subagentProgress.js';
 import { createToolCallExecutionResult, executeToolCallOnce, streamExecutionProgress } from './run/toolExecution.js';
-import { blockedToolMessage, isToolAllowedInMode, toolsForMode } from './mode/policy.js';
+import { toolsForMode } from './mode/policy.js';
 import { ToolRegistry } from '../tools/core/ToolRegistry.js';
 import type { ToolDefinition, ToolExecutionEvent } from '../tools/core/types.js';
 import { toAssistantMessage } from './utils/messages.js';
@@ -40,11 +43,15 @@ interface AgentRunnerOptions {
   workspaceRoot?: string;
   transcriptEnabled?: boolean;
   compactSummary?: string;
+  permissionManager?: PermissionManager;
+  confirmPermission?: PermissionConfirmer;
+  hooks?: HookRegistry;
 }
 
 interface RunOptions {
   signal?: AbortSignal;
   mode?: AgentMode;
+  planApproved?: boolean;
 }
 
 interface CompactOptions {
@@ -70,6 +77,9 @@ export class AgentRunner {
   private readonly context: ContextManager;
   private readonly transcript?: TranscriptStore;
   private readonly workspaceRoot?: string;
+  private readonly permissionManager: PermissionManager;
+  private readonly confirmPermission?: PermissionConfirmer;
+  private readonly hooks: HookRegistry;
   private compactSummary: string;
   private compactedMessageCount: number;
 
@@ -81,7 +91,10 @@ export class AgentRunner {
     contextConfig = loadContextConfig(),
     workspaceRoot,
     transcriptEnabled = false,
-    compactSummary = ''
+    compactSummary = '',
+    permissionManager = new PermissionManager(),
+    confirmPermission,
+    hooks = new HookRegistry()
   }: AgentRunnerOptions) {
     this.model = model;
     this.tools = new ToolRegistry(tools);
@@ -90,6 +103,9 @@ export class AgentRunner {
     this.context = new ContextManager({ config: contextConfig });
     this.workspaceRoot = workspaceRoot;
     this.transcript = transcriptEnabled && workspaceRoot ? new TranscriptStore(workspaceRoot) : undefined;
+    this.permissionManager = permissionManager;
+    this.confirmPermission = confirmPermission;
+    this.hooks = hooks;
     this.compactSummary = compactSummary;
     this.compactedMessageCount = compactSummary ? this.history.length : 0;
   }
@@ -97,6 +113,8 @@ export class AgentRunner {
   async *run(input: string, options: RunOptions = {}): AsyncGenerator<AgentRunEvent> {
     const signal = options.signal;
     const mode = options.mode ?? DEFAULT_MODE;
+    let sessionStarted = false;
+    let sessionEnded = false;
     yield { type: 'run_started', input, mode };
     if (signal?.aborted) {
       yield { type: 'run_cancelled', reason: cancellationReason(signal) };
@@ -108,6 +126,8 @@ export class AgentRunner {
     await this.appendTranscriptMessage(userMessage);
 
     try {
+      await this.hooks.sessionStart({ input, mode });
+      sessionStarted = true;
       for (let turnCount = 1; turnCount <= this.maxTurns; turnCount += 1) {
         assertNotAborted(signal);
         let usage = this.getContextUsage(mode);
@@ -154,21 +174,31 @@ export class AgentRunner {
         await this.appendTranscriptMessage(assistantMessage);
 
         if (response.toolCalls.length === 0) {
+          await this.hooks.sessionEnd({ input, mode, status: 'completed', message: response.content });
+          sessionEnded = true;
           yield { type: 'run_completed', content: response.content };
           return;
         }
 
-        yield* this.runToolCalls(response.toolCalls, mode, signal);
+        yield* this.runToolCalls(response.toolCalls, { mode, signal, planApproved: options.planApproved });
       }
 
       throw new Error(`Agent loop exceeded max turns (${this.maxTurns})`);
     } catch (error: unknown) {
       if (isAbortError(error, signal)) {
+        if (sessionStarted && !sessionEnded) {
+          await this.hooks.sessionEnd({ input, mode, status: 'cancelled', message: cancellationReason(signal) });
+          sessionEnded = true;
+        }
         yield { type: 'run_cancelled', reason: cancellationReason(signal) };
         return;
       }
 
       const message = error instanceof Error ? error.message : String(error);
+      if (sessionStarted && !sessionEnded) {
+        await this.hooks.sessionEnd({ input, mode, status: 'failed', message });
+        sessionEnded = true;
+      }
       yield { type: 'run_failed', error: message };
     }
   }
@@ -221,13 +251,12 @@ export class AgentRunner {
 
   private async *runToolCalls(
     toolCalls: ToolCall[],
-    mode: AgentMode,
-    signal?: AbortSignal
+    { mode, signal, planApproved }: { mode: AgentMode; signal?: AbortSignal; planApproved?: boolean }
   ): AsyncGenerator<AgentRunEvent> {
     for (const toolCall of toolCalls) {
       assertNotAborted(signal);
       yield { type: 'tool_call_started', toolCall };
-      const execution = this.executeToolCall(toolCall, mode, signal);
+      const execution = this.executeToolCall(toolCall, { mode, signal, planApproved });
       let toolResult:
         | {
             message: ChatMessage;
@@ -255,24 +284,59 @@ export class AgentRunner {
     }
   }
 
-  private async *executeToolCall(toolCall: ToolCall, mode: AgentMode, signal?: AbortSignal): AsyncGenerator<
-    Extract<AgentRunEvent, { type: 'subagent_progress' }>,
+  private async *executeToolCall(
+    toolCall: ToolCall,
+    { mode, signal, planApproved }: { mode: AgentMode; signal?: AbortSignal; planApproved?: boolean }
+  ): AsyncGenerator<
+    Extract<AgentRunEvent, { type: 'subagent_progress' | 'permission_decided' }>,
     {
       message: ChatMessage;
       event: Extract<AgentRunEvent, { type: 'tool_call_completed' }>;
     }
   > {
-    if (!isToolAllowedInMode(toolCall.name, mode)) {
-      const content = blockedToolMessage(toolCall.name, mode);
-      return createToolCallExecutionResult({
+    const permission = this.permissionManager.check({ toolCall, mode, planApproved });
+    yield { type: 'permission_decided', toolCall, decision: permission.decision, reason: permission.reason };
+
+    if (permission.decision === 'deny') {
+      const result = createToolCallExecutionResult({
         toolCall,
-        content,
+        content: permission.reason,
         isError: true,
         durationMs: 0
       });
+      await this.hooks.postToolUse({ toolCall, mode, permission, planApproved, result });
+      return result;
     }
 
-    return yield* streamExecutionProgress({
+    if (permission.decision === 'ask') {
+      const approved = this.confirmPermission
+        ? await this.confirmPermission({ request: { toolCall, mode, planApproved }, result: permission })
+        : false;
+      if (!approved) {
+        const result = createToolCallExecutionResult({
+          toolCall,
+          content: `Permission denied by user: ${permission.reason}`,
+          isError: true,
+          durationMs: 0
+        });
+        await this.hooks.postToolUse({ toolCall, mode, permission, planApproved, result });
+        return result;
+      }
+    }
+
+    const blocked = await this.hooks.preToolUse({ toolCall, mode, permission, planApproved });
+    if (blocked) {
+      const result = createToolCallExecutionResult({
+        toolCall,
+        content: `Blocked by hook ${blocked.hookName}: ${blocked.reason}`,
+        isError: true,
+        durationMs: 0
+      });
+      await this.hooks.postToolUse({ toolCall, mode, permission, planApproved, result });
+      return result;
+    }
+
+    const result = yield* streamExecutionProgress({
       execute: (emit: (event: ToolExecutionEvent) => void) =>
         executeToolCallOnce({
           toolCall,
@@ -282,6 +346,8 @@ export class AgentRunner {
         }),
       mapProgress: (event) => mapSubagentProgressEvent(toolCall, event)
     });
+    await this.hooks.postToolUse({ toolCall, mode, permission, planApproved, result });
+    return result;
   }
 
   getHistory(): ChatMessage[] {

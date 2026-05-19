@@ -1,6 +1,7 @@
 import type { ToolDefinition } from './tools/core/types.js';
 export type { AgentRunEvent } from './agent/run/events.js';
 export type { ContextConfig, ContextUsage, ContextUsageBreakdown, ContextUsageStatus } from './agent/context/types.js';
+export type { PermissionConfirmation, PermissionConfirmer, PermissionDecision, PermissionResult } from './agent/permissions/types.js';
 
 export type AgentMode = 'execute' | 'plan';
 export type PlanStatus = 'none' | 'needs_approval' | 'approved';

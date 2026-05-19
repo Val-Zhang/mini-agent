@@ -1,5 +1,6 @@
 import type { AgentMode, PlanStatus, ToolCall } from '../../types.js';
 import type { ContextUsage } from '../context/types.js';
+import type { PermissionDecision } from '../permissions/types.js';
 import type { SubagentProgressPhase } from './subagentProgress.js';
 
 export type AgentRunEvent =
@@ -37,6 +38,12 @@ export type AgentRunEvent =
       type: 'context_usage_updated';
       usage: ContextUsage;
       message?: string;
+    }
+  | {
+      type: 'permission_decided';
+      toolCall: ToolCall;
+      decision: PermissionDecision;
+      reason: string;
     }
   | {
       type: 'model_turn_started';

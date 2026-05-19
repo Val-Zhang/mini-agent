@@ -52,6 +52,11 @@ export class VerboseRenderer implements TerminalRenderer {
         this.output.write(`context> ${event.message ? `${event.message}\n` : ''}${formatContextUsageDetails(event.usage)}\n\n`);
         break;
 
+      case 'permission_decided':
+        this.output.write(`permission> ${event.decision} ${event.toolCall.name}\n`);
+        this.output.write(formatBlock('reason', event.reason));
+        break;
+
       case 'model_turn_started':
         this.output.write(`trace> 模型第 ${event.turnCount} 轮思考中...\n`);
         break;

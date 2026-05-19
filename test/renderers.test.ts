@@ -129,6 +129,57 @@ test('renderers show context usage and compaction events', () => {
   assert.match(text, /compact> 完成 70% -> 25%，summary 123 tokens/);
 });
 
+test('renderers show permission decisions that need attention', () => {
+  const compactOutput = new MemoryOutput();
+  const compactRenderer = createRenderer({ mode: 'compact', output: compactOutput });
+  const verboseOutput = new MemoryOutput();
+  const verboseRenderer = createRenderer({ mode: 'verbose', output: verboseOutput });
+  const silentOutput = new MemoryOutput();
+  const silentRenderer = createRenderer({ mode: 'off', output: silentOutput });
+  const event: AgentRunEvent = {
+    type: 'permission_decided',
+    decision: 'ask',
+    reason: 'write_file modifies files and needs confirmation.',
+    toolCall: {
+      id: 'call_write',
+      name: 'write_file',
+      input: { path: 'README.md', content: 'hello' }
+    }
+  };
+
+  compactRenderer.render(event);
+  verboseRenderer.render(event);
+  silentRenderer.render(event);
+
+  assert.match(compactOutput.toString(), /permission> ask write_file/);
+  assert.match(verboseOutput.toString(), /permission> ask write_file/);
+  assert.match(verboseOutput.toString(), /reason>/);
+  assert.match(silentOutput.toString(), /permission> ask write_file/);
+});
+
+test('compact and silent renderers hide allow permission chatter', () => {
+  const compactOutput = new MemoryOutput();
+  const compactRenderer = createRenderer({ mode: 'compact', output: compactOutput });
+  const silentOutput = new MemoryOutput();
+  const silentRenderer = createRenderer({ mode: 'off', output: silentOutput });
+  const event: AgentRunEvent = {
+    type: 'permission_decided',
+    decision: 'allow',
+    reason: 'read_file is read-only.',
+    toolCall: {
+      id: 'call_read',
+      name: 'read_file',
+      input: { path: 'README.md' }
+    }
+  };
+
+  compactRenderer.render(event);
+  silentRenderer.render(event);
+
+  assert.equal(compactOutput.toString(), '');
+  assert.equal(silentOutput.toString(), '');
+});
+
 test('silent renderer hides events but keeps final answer', () => {
   const output = new MemoryOutput();
   const renderer = createRenderer({ mode: 'off', output });

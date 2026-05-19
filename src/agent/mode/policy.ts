@@ -1,15 +1,16 @@
 import type { AgentMode, ChatMessage } from '../../types.js';
 import type { ToolDefinition } from '../../tools/core/types.js';
+import { PermissionManager } from '../permissions/permissionManager.js';
 import { PLAN_MODE_SYSTEM_PROMPT } from '../prompts/plan.js';
 
-const PLAN_MODE_ALLOWED_TOOLS = new Set(['read_file', 'todo_write', 'list_dir', 'glob', 'grep', 'web_fetch', 'load_skill']);
+const permissionManager = new PermissionManager();
 
 export function isToolAllowedInMode(toolName: string, mode: AgentMode): boolean {
   if (mode === 'execute') {
     return true;
   }
 
-  return PLAN_MODE_ALLOWED_TOOLS.has(toolName);
+  return permissionManager.visibleTools([{ name: toolName }], mode).length > 0;
 }
 
 export function toolsForMode(tools: ToolDefinition[], mode: AgentMode): ToolDefinition[] {
@@ -17,7 +18,7 @@ export function toolsForMode(tools: ToolDefinition[], mode: AgentMode): ToolDefi
     return tools;
   }
 
-  return tools.filter((tool) => isToolAllowedInMode(tool.name, mode));
+  return permissionManager.visibleTools(tools, mode);
 }
 
 export function withModeSystemPrompt(history: ChatMessage[], mode: AgentMode): ChatMessage[] {

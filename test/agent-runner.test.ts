@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AgentRunner, loadMaxTurns } from '../src/agent/AgentRunner.js';
+import { HookRegistry } from '../src/agent/hooks/HookRegistry.js';
 import { PLAN_MODE_SYSTEM_PROMPT } from '../src/agent/prompts/plan.js';
 import { SubagentRegistry } from '../src/agent/subagents/SubagentRegistry.js';
 import { createTaskTool, loadTaskMaxTurns } from '../src/tools/task/taskTool.js';
@@ -118,6 +119,7 @@ test('emits observable model and tool events with content', async () => {
       'model_turn_started',
       'model_turn_completed',
       'tool_call_started',
+      'permission_decided',
       'tool_call_completed',
       'context_usage_updated',
       'model_turn_started',
@@ -134,10 +136,197 @@ test('emits observable model and tool events with content', async () => {
     assert.equal(events[3].content, 'I need to inspect the todo list.');
     assert.equal(events[3].stopReason, 'tool_calls');
   }
-  assert.equal(events[5].type, 'tool_call_completed');
-  if (events[5].type === 'tool_call_completed') {
-    assert.equal(events[5].content, 'todo state');
+  assert.equal(events[5].type, 'permission_decided');
+  if (events[5].type === 'permission_decided') {
+    assert.equal(events[5].decision, 'allow');
   }
+  assert.equal(events[6].type, 'tool_call_completed');
+  if (events[6].type === 'tool_call_completed') {
+    assert.equal(events[6].content, 'todo state');
+  }
+});
+
+test('asks before executing file write tools', async () => {
+  let writeCalls = 0;
+  const confirmations: string[] = [];
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_write',
+          name: 'write_file',
+          input: { path: 'a.txt', content: 'hello' }
+        }
+      ]
+    },
+    {
+      content: 'Write complete.',
+      toolCalls: []
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    confirmPermission({ request }) {
+      confirmations.push(request.toolCall.name);
+      return true;
+    },
+    tools: [
+      {
+        name: 'write_file',
+        async execute() {
+          writeCalls += 1;
+          return 'written';
+        }
+      }
+    ]
+  });
+
+  const events = await collectEvents(runner.run('write a file'));
+
+  assert.deepEqual(confirmations, ['write_file']);
+  assert.equal(writeCalls, 1);
+  assert.ok(events.some((event) => event.type === 'permission_decided' && event.decision === 'ask'));
+});
+
+test('does not execute ask tools when confirmation is rejected', async () => {
+  let writeCalls = 0;
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_write',
+          name: 'write_file',
+          input: { path: 'a.txt', content: 'hello' }
+        }
+      ]
+    },
+    {
+      content: 'Handled refusal.',
+      toolCalls: []
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    confirmPermission() {
+      return false;
+    },
+    tools: [
+      {
+        name: 'write_file',
+        async execute() {
+          writeCalls += 1;
+          return 'written';
+        }
+      }
+    ]
+  });
+
+  const events = await collectEvents(runner.run('write a file'));
+  const completed = events.find(
+    (event) => event.type === 'tool_call_completed' && event.toolCall.id === 'call_write'
+  );
+
+  assert.equal(writeCalls, 0);
+  assert.ok(completed);
+  if (completed?.type === 'tool_call_completed') {
+    assert.equal(completed.isError, true);
+    assert.match(completed.content, /Permission denied by user/);
+  }
+});
+
+test('denies dangerous bash commands before execution', async () => {
+  let bashCalls = 0;
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_bash',
+          name: 'bash',
+          input: { command: 'rm -rf .' }
+        }
+      ]
+    },
+    {
+      content: 'Refused dangerous command.',
+      toolCalls: []
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    tools: [
+      {
+        name: 'bash',
+        async execute() {
+          bashCalls += 1;
+          return 'ran';
+        }
+      }
+    ]
+  });
+
+  const events = await collectEvents(runner.run('run command'));
+  const permission = events.find(
+    (event) => event.type === 'permission_decided' && event.toolCall.id === 'call_bash'
+  );
+
+  assert.equal(bashCalls, 0);
+  assert.ok(permission);
+  if (permission?.type === 'permission_decided') {
+    assert.equal(permission.decision, 'deny');
+  }
+});
+
+test('approved plan allows file write tools without asking', async () => {
+  let writeCalls = 0;
+  let confirmCalls = 0;
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call_write',
+          name: 'write_file',
+          input: { path: 'a.txt', content: 'hello' }
+        }
+      ]
+    },
+    {
+      content: 'Implemented approved plan.',
+      toolCalls: []
+    }
+  ]);
+
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    confirmPermission() {
+      confirmCalls += 1;
+      return false;
+    },
+    tools: [
+      {
+        name: 'write_file',
+        async execute() {
+          writeCalls += 1;
+          return 'written';
+        }
+      }
+    ]
+  });
+
+  await collectEvents(runner.run('implement', { planApproved: true }));
+
+  assert.equal(confirmCalls, 0);
+  assert.equal(writeCalls, 1);
 });
 
 test('emits model delta events when stream chat is available', async () => {
@@ -618,6 +807,101 @@ test('plan mode still allows read-only planning tools', async () => {
   if (completed?.type === 'tool_call_completed') {
     assert.equal(completed.isError, false);
     assert.equal(completed.content, 'content');
+  }
+});
+
+test('runs session and tool hooks around tool execution', async () => {
+  const calls: string[] = [];
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [{ id: 'call_echo', name: 'echo', input: { text: 'observed' } }]
+    },
+    {
+      content: 'Done.',
+      toolCalls: []
+    }
+  ]);
+  const hooks = new HookRegistry([
+    {
+      name: 'recorder',
+      onSessionStart(context) {
+        calls.push(`session_start:${context.mode}`);
+      },
+      onPreToolUse(context) {
+        calls.push(`pre:${context.toolCall.name}:${context.permission.decision}`);
+      },
+      onPostToolUse(context) {
+        calls.push(`post:${context.toolCall.name}:${context.result.event.isError}`);
+      },
+      onSessionEnd(context) {
+        calls.push(`session_end:${context.status}`);
+      }
+    }
+  ]);
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    hooks,
+    tools: [
+      {
+        name: 'echo',
+        async execute(input) {
+          return String(input.text);
+        }
+      }
+    ]
+  });
+
+  await runner.send('use tool');
+
+  assert.deepEqual(calls, ['session_start:execute', 'pre:echo:allow', 'post:echo:false', 'session_end:completed']);
+});
+
+test('pre tool hook can block tool execution', async () => {
+  let calls = 0;
+  const model = new FakeModel([
+    {
+      content: '',
+      toolCalls: [{ id: 'call_echo', name: 'echo', input: { text: 'observed' } }]
+    },
+    {
+      content: 'Saw hook block.',
+      toolCalls: []
+    }
+  ]);
+  const runner = new AgentRunner({
+    model,
+    systemPrompt: 'test system',
+    hooks: new HookRegistry([
+      {
+        name: 'blocker',
+        onPreToolUse() {
+          return { action: 'block', reason: 'nope' };
+        }
+      }
+    ]),
+    tools: [
+      {
+        name: 'echo',
+        async execute() {
+          calls += 1;
+          return 'should not run';
+        }
+      }
+    ]
+  });
+
+  const events = await collectEvents(runner.run('use tool'));
+  const completed = events.find(
+    (event) => event.type === 'tool_call_completed' && event.toolCall.id === 'call_echo'
+  );
+
+  assert.equal(calls, 0);
+  assert.ok(completed);
+  if (completed?.type === 'tool_call_completed') {
+    assert.equal(completed.isError, true);
+    assert.match(completed.content, /Blocked by hook blocker: nope/);
   }
 });
 
